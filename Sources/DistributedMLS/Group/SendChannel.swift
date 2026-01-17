@@ -115,9 +115,9 @@ extension LazySendChannel {
             case .ready(let r):
                 try .ready(r.archive)
             case .queued:
-                try .queued
+                .queued
             case .creating:
-                try .queued
+                .queued
             }
         }
     }

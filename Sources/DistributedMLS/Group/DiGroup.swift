@@ -199,8 +199,6 @@ extension DiMLS.DiGroup {
         let input = try prepareCommit()
 
         return try commit(input: input, sender: sender)
-
-        throw DiMLSError.notImplemented
     }
 
     private func commit(
@@ -293,7 +291,7 @@ extension DiMLS.DiGroup {
         let senderReferenceId = try welcome.senderReferenceId
         assert(!totalGroup.members.keys.contains(senderReferenceId))
 
-        guard totalGroup.canAdd(try welcome.senderReferenceId) == nil else {
+        guard totalGroup.canAdd(try welcome.senderReferenceId) else {
             throw DiMLSError.duplicateSendGroup
         }
         throw DiMLSError.notImplemented
