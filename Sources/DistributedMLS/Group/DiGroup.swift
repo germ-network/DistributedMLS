@@ -37,39 +37,8 @@ extension DiMLS {
         func prepareCommit() throws -> DiMLS.CommitInput<Credential>
         func received(welcome: WelcomeOutput) throws
 
-        //Deprecate:
-        ///DiGgroup Operations
-        //        associatedtype RemoteState: RemoteStateInterface
-        //        var remoteStates: [ReferenceID: RemoteState] { get }
 
-        //Local mutations only have meaning when I broadcast them into the world
-        //        func stageAdd(member: DiMLS.CredentialedKeyPackage<Credential>) throws
-        //        func stageDelete(member: Credential) throws
-        //        //application should drive if new key material is needed
         //        func stageNewLocalKeyMaterial() throws
-
-        ///DiGroup 1:1 Control Plane
-        ///expect sender crendential implicit in assigned transport path
-        //        func receive(ciphertext: Data, from: Credential) throws -> DiMLS.DecryptOutput
-
-        //let the application get and resend unack'd commits
-        //TODO: attach metadata to the result like an epoch no
-        //        func inFlightFor(remote: Credential) throws -> [Data]
-
-        //Application messages
-        //this will commit any pending changes
-        //TODO: also report state changes
-        //for now, authenticated data is included in the output
-        //(because MLS does in the PrivateMessage format)
-        //returns private message and recipients
-        //        func encrypt(plaintext: Data, authenticating: Data) throws
-        //            -> DiMLS.PrivateMessage<Credential>
-        //        func stapledEncrypt(plaintext: Data) throws
-        //            -> DiMLS.PrivateMessage<Credential>
-
-        //process incoming, which may be an application message, commit
-        //or a welcome to another user's send group
-
     }
 }
 
