@@ -10,12 +10,9 @@ import Foundation
 extension DiMLS {
     public protocol Client: Actor, Archivable {
         associatedtype Credential: DiMLSCredential
-        associatedtype Invitation: DiInvitation  //where Invitation.Credential == Credential
         associatedtype Group: DiGroup where Group.WelcomeOutput == WelcomeOutput
         associatedtype WelcomeOutput: WelcomeOutputInterface
-        where
-            Group.Credential == Credential
-        //            Invitation.WelcomeOutput == WelcomeOutput
+        where Group.Credential == Credential
 
         static func create(credential: Credential) throws -> Self
 
@@ -46,10 +43,7 @@ extension DiMLS {
     }
 }
 
-public protocol Archivable {
-    associatedtype Archive: Sendable, Codable
-    init(archive: Archive) throws
-
-    //helps to define this in the protocol for Actor protocols
-    //    var archive: Archive { get throws }
+extension DiMLS {
+    public typealias KeyPackageId = Data
 }
+
