@@ -7,7 +7,7 @@
 
 import Foundation
 
-enum DiMLSError: Error {
+public enum DiMLSError: Error {
     case missingRemoteState
     case mismatchedGroupId
     case duplicateSendGroup

@@ -37,7 +37,6 @@ extension DiMLS {
         func prepareCommit() throws -> DiMLS.CommitInput<Credential>
         func received(welcome: WelcomeOutput) throws
 
-
         //        func stageNewLocalKeyMaterial() throws
     }
 }
@@ -60,8 +59,8 @@ extension DiMLS.DiGroup {
         credentialFetcher: @escaping CredentialKeyPackageFetcher,
         referenceIdFetcher: @escaping ReferenceIdKeyPackageFetcher
     ) throws -> Task<Void, Error> {
-        guard case .queued = lazySender else {
-            if case .creating(let task) = lazySender {
+        guard case .queued(let dependency) = lazySender else {
+            if case .creating(let task, _) = lazySender {
                 return task
             }
             throw DiMLSError.sendGroupNotReady
@@ -70,6 +69,10 @@ extension DiMLS.DiGroup {
             do {
                 let archive = try await createSendGroup(
                     myCredential: myCredential,
+                    members:
+                        totalGroup
+                        .membershipForCreating(sender: myCredential.referenceId),
+                    dependency: dependency,
                     credentialFetcher: credentialFetcher,
                     referenceIdFetcher: referenceIdFetcher
                 )
@@ -87,22 +90,22 @@ extension DiMLS.DiGroup {
                 )
             } catch {
                 print("error creating: \(error)")
-                lazySender = .queued
+                lazySender = .queued(dependency)
                 throw error
             }
         }
-        lazySender = .creating(task)
+        lazySender = .creating(task, dependency)
         return task
     }
 
     private func createSendGroup(
         myCredential: Credential,
+        members: [DiMLS.ReferenceID: DiMLS.Participant<Self.Credential>],
+        dependency: DiMLS.KeyedDependency?,
         credentialFetcher: CredentialKeyPackageFetcher,
         referenceIdFetcher: ReferenceIdKeyPackageFetcher
     ) async throws -> Sender.Archive {
-        if case .ready = lazySender {
-            throw DiMLSError.disallowed
-        }
+
         //capture a snapshot of what the group needs
         var remotes = [DiMLS.ReferenceID: SendChannelInputs<Credential>.Remote]()
 
@@ -138,7 +141,8 @@ extension DiMLS.DiGroup {
             identityProvider: Sender.identityProvider(
                 totalGroup: totalGroup,
                 sender: myCredential
-            )
+            ),
+            dependency: dependency
         )
     }
 
@@ -177,7 +181,7 @@ extension DiMLS.DiGroup {
         var newRemotes: [DiMLS.CredentialedKeyPackage<Credential>] = []
 
         //modify remotes and group
-        for action in input.proposals {
+        for action in input.localOps {
             switch action {
             case .add(let credentialKeyPackage):
                 newRemotes.append(credentialKeyPackage)

@@ -23,7 +23,8 @@ public protocol SendChannel {
 
     static func create(
         input: SendChannelInputs<Credential>,
-        identityProvider: IdentityProvider
+        identityProvider: IdentityProvider,
+        dependency: DiMLS.KeyedDependency?
     ) throws -> Archive
 
     init(archive: Archive, identityProvider: IdentityProvider) throws
@@ -75,9 +76,9 @@ public struct SendChannelInputs<Credential: DiMLSCredential> {
 
 public enum LazySendChannel<R: SendChannel> {
     case ready(R)
-    case queued
+    case queued(DiMLS.KeyedDependency?)
     //serves as a mutex on snapshot of Q state
-    case creating(Task<Void, Error>)
+    case creating(Task<Void, Error>, DiMLS.KeyedDependency?)
 
     public init(
         archive: Archive,
@@ -88,8 +89,8 @@ public enum LazySendChannel<R: SendChannel> {
             self = .ready(
                 try .init(archive: archive, identityProvider: identityProvider)
             )
-        case .queued:
-            self = .queued
+        case .queued(let dependency):
+            self = .queued(dependency)
         }
     }
 
@@ -106,7 +107,7 @@ public enum LazySendChannel<R: SendChannel> {
 extension LazySendChannel {
     public enum Archive: Sendable, Codable {
         case ready(R.Archive)
-        case queued
+        case queued(DiMLS.KeyedDependency?)
     }
 
     public var archive: Archive {
@@ -114,10 +115,10 @@ extension LazySendChannel {
             switch self {
             case .ready(let r):
                 try .ready(r.archive)
-            case .queued:
-                .queued
-            case .creating:
-                .queued
+            case .queued(let dependency):
+                .queued(dependency)
+            case .creating(_, let dependency):
+                .queued(dependency)
             }
         }
     }

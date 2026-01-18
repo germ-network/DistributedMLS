@@ -67,13 +67,6 @@ public final class DiGroupState<Credential: DiMLSCredential> {
     }
 }
 
-extension DiMLS {
-    enum Operation {
-        //in this context, the creator added themselves implicitly
-        case add(ReferenceID)
-    }
-}
-
 extension DiGroupState: Archivable {
     public struct Archive: Codable, Sendable {
         public let diGroupId: Data
