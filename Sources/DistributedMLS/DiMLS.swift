@@ -8,9 +8,9 @@
 import Foundation
 
 public enum DiMLS {
-    //like send group id
     public typealias ReferenceID = Data
     public typealias EpochID = UInt64
+    public typealias KeyPackageId = Data
 
     ///mirrors (is a) MLS private message in that it has an encrypted
     ///application message and plaintext metadata and auth data
@@ -18,13 +18,13 @@ public enum DiMLS {
     ///of the collective group.
     public struct PrivateMessage<C: DiMLSCredential>: Sendable {
         public let body: Data  //encoded MLS Private message
-        public let epoch: UInt64  //we may retry transmit after a later commit
+        public let epoch: EpochID  //we may retry transmit after a later commit
         public let sender: C
         public let addressees: [C]
 
         public init(
             body: Data,
-            epoch: UInt64,
+            epoch: EpochID,
             sender: C,
             addressees: [C]
         ) {
@@ -45,12 +45,12 @@ public enum DiMLS {
         //encrypt headers
         public let privateMessage: Data
         //if not stapled let the caller judge if it wants resend the commit
-        public let epoch: UInt64
+        public let epoch: EpochID
         public let additionalCommits: [EpochCommit]
 
         public init(
             privateMessage: Data,
-            epoch: UInt64,
+            epoch: EpochID,
             additionalCommits: [EpochCommit]
         ) {
             self.privateMessage = privateMessage
@@ -60,10 +60,10 @@ public enum DiMLS {
     }
 
     public struct EpochCommit: Sendable, Codable {
-        public let epoch: UInt64
+        public let epoch: EpochID
         public let commit: Data
 
-        public init(epoch: UInt64, commit: Data) {
+        public init(epoch: EpochID, commit: Data) {
             self.epoch = epoch
             self.commit = commit
         }
