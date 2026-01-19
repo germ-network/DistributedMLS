@@ -35,7 +35,8 @@ extension DiMLS {
 
         func process(
             wireWelcome: Data,
-            keyPackageId: KeyPackageId?
+            keyPackageId: KeyPackageId?,
+            knownDependencies: [DiMLS.KeyedDependency]
         ) throws -> (
             KeyPackageId,
             WelcomeOutput

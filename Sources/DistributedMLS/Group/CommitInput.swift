@@ -25,7 +25,7 @@ extension DiMLS {
     }
 
     //psk's
-    public struct Dependency: Codable, Sendable {
+    public struct Dependency: Codable, Sendable, Hashable {
         public let pskSource: ReferenceID
         public let epoch: EpochID
 
@@ -38,5 +38,10 @@ extension DiMLS {
     public struct KeyedDependency: Codable, Sendable {
         public let dependency: Dependency
         public let keyData: Data
+
+        public init(dependency: Dependency, keyData: Data) {
+            self.dependency = dependency
+            self.keyData = keyData
+        }
     }
 }
