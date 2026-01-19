@@ -24,6 +24,7 @@ extension DiMLS {
         //associated State
         //mutable object
 
+        nonisolated var diGroupId: Data { get }
         var totalGroup: DiGroupState<Credential> { get }
         var receivers: [ReferenceID: Receiver] { get set }
         var pendingState: PendingState<Credential> { get }
@@ -85,6 +86,7 @@ extension DiMLS.DiGroup {
                 lazySender = .ready(
                     try .init(
                         archive: archive,
+                        diGroupId: diGroupId,
                         identityProvider: identityProvider
                     )
                 )
@@ -134,7 +136,7 @@ extension DiMLS.DiGroup {
 
         return try Sender.create(
             input: .init(
-                diGroupID: totalGroup.diGroupId,
+                diGroupID: diGroupId,
                 myCredential: myCredential,
                 remotes: remotes
             ),

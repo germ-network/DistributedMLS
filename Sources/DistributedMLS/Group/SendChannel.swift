@@ -27,7 +27,11 @@ public protocol SendChannel {
         dependency: DiMLS.KeyedDependency?
     ) throws -> Archive
 
-    init(archive: Archive, identityProvider: IdentityProvider) throws
+    init(
+        archive: Archive,
+        diGroupId: Data,
+        identityProvider: IdentityProvider
+    ) throws
 
     var archive: Archive { get throws }
 
@@ -82,12 +86,17 @@ public enum LazySendChannel<R: SendChannel> {
 
     public init(
         archive: Archive,
+        diGroupId: Data,
         identityProvider: R.IdentityProvider
     ) throws {
         switch archive {
         case .ready(let archive):
             self = .ready(
-                try .init(archive: archive, identityProvider: identityProvider)
+                try .init(
+                    archive: archive,
+                    diGroupId: diGroupId,
+                    identityProvider: identityProvider
+                )
             )
         case .queued(let dependency):
             self = .queued(dependency)

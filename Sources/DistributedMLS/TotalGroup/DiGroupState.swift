@@ -10,23 +10,16 @@ import Foundation
 //state of the observed group, including (permanently) removed members
 public final class DiGroupState<Credential: DiMLSCredential> {
     ///we can join at any time, and don't need to reconstruct adds from the group membership
-    public let diGroupId: Data
-
     public private(set) var members: [DiMLS.ReferenceID: Membership]
 
     public var count: Int { members.count }
 
-    private init(
-        diGroupId: Data,
-        members: [DiMLS.ReferenceID: Membership],
-    ) {
-        self.diGroupId = diGroupId
+    private init(members: [DiMLS.ReferenceID: Membership]) {
         self.members = members
     }
 
     public convenience init(archive: Archive) throws {
         self.init(
-            diGroupId: archive.diGroupId,
             members: try archive.members.mapValues { try .init(archive: $0) },
         )
     }
@@ -69,22 +62,16 @@ public final class DiGroupState<Credential: DiMLSCredential> {
 
 extension DiGroupState: Archivable {
     public struct Archive: Codable, Sendable {
-        public let diGroupId: Data
         public let members: [DiMLS.ReferenceID: Membership.Archive]
         //array makes it easier to encode stably over the wire
 
-        public init(
-            diGroupId: Data,
-            members: [DiMLS.ReferenceID: Membership.Archive]
-        ) {
-            self.diGroupId = diGroupId
+        public init(members: [DiMLS.ReferenceID: Membership.Archive]) {
             self.members = members
         }
     }
 
     public var archive: Archive {
         .init(
-            diGroupId: diGroupId,
             members: members.mapValues(\.archive),
         )
     }
