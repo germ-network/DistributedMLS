@@ -13,7 +13,7 @@ extension DiMLS {
         associatedtype Credential: DiMLSCredential
 
         //State Types
-        associatedtype Receiver: ReceiveChannel
+        associatedtype Receiver: ReceiveChannel where Receiver.WelcomeOutput == WelcomeOutput
         associatedtype Sender: SendChannel where Sender.Credential == Credential
 
         associatedtype WelcomeOutput: WelcomeOutputInterface
@@ -214,79 +214,24 @@ extension DiMLS.DiGroup {
             dependencies: [:]
         )
     }
-}
 
-//(Deprecate) full-featured compound api's
-extension DiMLS.DiGroup {
-    //    public func encryptWithCommits(
-    //        plaintext: Data,
-    //        authenticating: Data,
-    //        staplingCommit: Bool
-    //    ) throws -> [(Credential, DiMLS.EncryptOutput)] {
-    //        //use the ratchet tree
-    //        let privateMessage = try encrypt(
-    //            plaintext: plaintext,
-    //            authenticating: authenticating
-    //        )
-    //
-    //        return try privateMessage.addressees.map { credential in
-    //            guard let remoteState = remoteStates[credential.referenceId] else {
-    //                throw DiMLSError.missingRemoteState
-    //            }
-    //
-    //            return (
-    //                credential,
-    //                try remoteState.package(
-    //                    privateMessage: privateMessage.body,
-    //                    epoch: privateMessage.epoch,
-    //                    staplingCommit: staplingCommit
-    //                )
-    //            )
-    //        }
-    //    }
-
-    //    public func received(welcome: WelcomeOutput) throws {
-    //        guard welcome.diGroupId == totalGroup.diGroupId else {
-    //            throw DiMLSError.mismatchedGroupId
-    //        }
-    //
-    //        let senderReferenceId = try welcome.senderReferenceId
-    //
-    //        //is this a member of the group?
-    //        if totalGroup.members.contains(senderReferenceId) {
-    //            try expectedMember(welcome: welcome)
-    //        } else {
-    //            try newMember(welcome: welcome)
-    //        }
-    //
-    //        //is this a
-    //    }
-
-    private func newMember(welcome: WelcomeOutput) throws {
-        let senderReferenceId = try welcome.senderReferenceId
-        assert(!totalGroup.members.keys.contains(senderReferenceId))
-
-        guard totalGroup.canAdd(try welcome.senderReferenceId) else {
-            throw DiMLSError.duplicateSendGroup
+    public func received(welcome: WelcomeOutput) throws {
+        guard welcome.diGroupId == diGroupId else {
+            throw DiMLSError.mismatchedGroupId
         }
-        throw DiMLSError.notImplemented
+
+        let senderReferenceId = try welcome.senderReferenceId
+
+        //is this a member of the group?
+        try totalGroup
+            .readyToWelcome(member: welcome.senderReferenceId)
+
+        guard receivers[senderReferenceId] == nil else {
+            throw DiMLSError.duplicateMember
+        }
+        receivers[senderReferenceId] = try .create(welcome: welcome)
     }
 
-    //    private func expectedMember(welcome: WelcomeOutput) throws {
-    //        let senderReferenceId = try welcome.senderReferenceId
-    //        assert(totalGroup.members.contains(senderReferenceId))
-    //
-    //        //where do I process this new welcome?
-    //        //do I already have a sendgroup for this sender?
-    //        if let remoteState = remoteStates[senderReferenceId] {
-    //            guard !remoteState.receivedWelcome else {
-    //                throw DiMLSError.duplicateSendGroup
-    //            }
-    //            //can setup the remoteSTate
-    //        } else {
-    //
-    //        }
-    //    }
 }
 
 //we have a generic (Credential) and a non-generic and could simplify them

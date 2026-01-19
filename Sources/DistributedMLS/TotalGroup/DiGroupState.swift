@@ -66,9 +66,9 @@ public final class DiGroupState<Credential: DiMLSCredential> {
         }
     }
 
-    public func readyToWelcome(credential: Credential) throws {
-        try members[credential.referenceId].tryUnwrap
-            .readyToWelcome(credential: credential)
+    public func readyToWelcome(member: DiMLS.ReferenceID) throws {
+        try members[member].tryUnwrap
+            .readyToWelcome(member: member)
     }
 }
 
@@ -133,7 +133,7 @@ extension DiGroupState {
             }
         }
 
-        func readyToWelcome(credential: Credential) throws {
+        func readyToWelcome(member: DiMLS.ReferenceID) throws {
             guard case .invited = self else {
                 throw DiMLSError.duplicateMember
             }
