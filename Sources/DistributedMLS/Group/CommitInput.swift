@@ -12,7 +12,7 @@ extension DiMLS {
         public var localOps: Set<DiMLSOperations<C>>
         public var followOps: Set<DiMLSOperations<C>>
 
-        var dependencies: [Dependency]
+        public var dependencies: [KeyedDependency]
 
         public var newSenderLeafNode: Bool
 
