@@ -17,7 +17,7 @@ public protocol SendChannel {
     associatedtype Welcome
 
     static func identityProvider(
-        totalGroup: DiGroupState<Credential>,
+        totalGroup: DiMLS.TotalGroup<Credential>,
         sender: Credential
     ) -> IdentityProvider
 

@@ -25,7 +25,7 @@ extension DiMLS {
         //mutable object
 
         nonisolated var diGroupId: Data { get }
-        var totalGroup: DiGroupState<Credential> { get }
+        var totalGroup: DiMLS.TotalGroup<Credential> { get }
         var receivers: [ReferenceID: Receiver] { get set }
         var pendingState: PendingState<Credential> { get }
         var lazySender: LazySendChannel<Sender> { get set }

@@ -8,71 +8,73 @@
 import Foundation
 
 //state of the observed group, including (permanently) removed members
-public final class DiGroupState<Credential: DiMLSCredential> {
-    ///we can join at any time, and don't need to reconstruct adds from the group membership
-    public private(set) var members: [DiMLS.ReferenceID: Membership]
+extension DiMLS {
+    public final class TotalGroup<Credential: DiMLSCredential> {
+        ///we can join at any time, and don't need to reconstruct adds from the group membership
+        public private(set) var members: [ReferenceID: Membership]
 
-    public var count: Int { members.count }
+        public var count: Int { members.count }
 
-    private init(members: [DiMLS.ReferenceID: Membership]) {
-        self.members = members
-    }
-
-    public convenience init(archive: Archive) throws {
-        self.init(
-            members: try archive.members.mapValues { try .init(archive: $0) },
-        )
-    }
-
-    public func canAdd(_ member: DiMLS.ReferenceID) -> Bool {
-        !members.keys.contains(member)
-    }
-
-    public func add(member: Credential) throws {
-        guard canAdd(member.referenceId) else {
-            throw DiMLSError.duplicateMember
+        private init(members: [ReferenceID: Membership]) {
+            self.members = members
         }
-        assert(members[member.referenceId] == nil)
-        members[member.referenceId] = .new(dependency: nil)
-    }
 
-    //    public func added(member: DiMLS.ReferenceID) throws {
-    //        guard canAdd(member) else {
-    //            throw DiMLSError.disallowed
-    //        }
-    //        members.insert(member)
-    //    }
+        public convenience init(archive: Archive) throws {
+            self.init(
+                members: try archive.members.mapValues { try .init(archive: $0) },
+            )
+        }
 
-    func membershipForCreating(
-        sender: DiMLS.ReferenceID
-    ) throws -> [DiMLS.ReferenceID: DiMLS.Participant<Credential>] {
-        try members.reduce(into: [:]) {
-            result,
-            pair in
-            guard pair.key != sender else {
-                return
+        public func canAdd(_ member: ReferenceID) -> Bool {
+            !members.keys.contains(member)
+        }
+
+        public func add(member: Credential) throws {
+            guard canAdd(member.referenceId) else {
+                throw DiMLSError.duplicateMember
             }
-            assert(result[pair.key] == nil)
-            switch pair.value {
-            case .invited(let dependencies):
-                result[pair.key] = .referenceId(pair.key)
-            case .claimed(let epochs):
-                let epoch = try epochs.last.tryUnwrap
-                result[pair.key] = .credential(
-                    epoch.credential,
-                    epoch.epoch
-                )
+            assert(members[member.referenceId] == nil)
+            members[member.referenceId] = .new(dependency: nil)
+        }
+
+        //    public func added(member: DiMLS.ReferenceID) throws {
+        //        guard canAdd(member) else {
+        //            throw DiMLSError.disallowed
+        //        }
+        //        members.insert(member)
+        //    }
+
+        func membershipForCreating(
+            sender: ReferenceID
+        ) throws -> [ReferenceID: Participant<Credential>] {
+            try members.reduce(into: [:]) {
+                result,
+                pair in
+                guard pair.key != sender else {
+                    return
+                }
+                assert(result[pair.key] == nil)
+                switch pair.value {
+                case .invited(let dependencies):
+                    result[pair.key] = .referenceId(pair.key)
+                case .claimed(let epochs):
+                    let epoch = try epochs.last.tryUnwrap
+                    result[pair.key] = .credential(
+                        epoch.credential,
+                        epoch.epoch
+                    )
+                }
             }
         }
-    }
 
-    public func readyToWelcome(member: DiMLS.ReferenceID) throws {
-        try members[member].tryUnwrap
-            .readyToWelcome(member: member)
+        public func readyToWelcome(member: ReferenceID) throws {
+            try members[member].tryUnwrap
+                .readyToWelcome(member: member)
+        }
     }
 }
 
-extension DiGroupState: Archivable {
+extension DiMLS.TotalGroup: Archivable {
     public struct Archive: Codable, Sendable {
         public let members: [DiMLS.ReferenceID: Membership.Archive]
         //array makes it easier to encode stably over the wire
@@ -89,7 +91,7 @@ extension DiGroupState: Archivable {
     }
 }
 
-extension DiGroupState {
+extension DiMLS.TotalGroup {
     public enum Membership {
         //can be empty so that as an identity provider it allows me to add them,
         //then lets me fill in the dependency
@@ -141,7 +143,7 @@ extension DiGroupState {
     }
 }
 
-extension DiGroupState.Membership: Archivable {
+extension DiMLS.TotalGroup.Membership: Archivable {
     public enum Archive: Codable, Sendable {
         case invited([DiMLS.KeyedDependency])
         case claimed([Epoch.Archive])
