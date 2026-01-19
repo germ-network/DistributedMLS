@@ -111,10 +111,10 @@ extension DiMLS.DiGroup {
         //capture a snapshot of what the group needs
         var remotes = [DiMLS.ReferenceID: SendChannelInputs<Credential>.Remote]()
 
-        for member
-            in totalGroup
+        let members =
+            try totalGroup
             .membershipForCreating(sender: myCredential.referenceId)
-        {
+        for member in members {
             switch member.value {
             case .credential(let credential, let epoch):
                 let keyPackage = try await credentialFetcher(credential)

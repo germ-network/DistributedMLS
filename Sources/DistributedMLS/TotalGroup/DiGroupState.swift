@@ -33,7 +33,7 @@ public final class DiGroupState<Credential: DiMLSCredential> {
             throw DiMLSError.duplicateMember
         }
         assert(members[member.referenceId] == nil)
-        members[member.referenceId] = .new(credential: member)
+        members[member.referenceId] = .new(dependency: nil)
     }
 
     //    public func added(member: DiMLS.ReferenceID) throws {
@@ -45,18 +45,30 @@ public final class DiGroupState<Credential: DiMLSCredential> {
 
     func membershipForCreating(
         sender: DiMLS.ReferenceID
-    ) -> [DiMLS.ReferenceID: DiMLS.Participant<Credential>] {
-        members.compactMapValues { membership in
-            guard membership.referenceId != sender else {
-                return nil
+    ) throws -> [DiMLS.ReferenceID: DiMLS.Participant<Credential>] {
+        try members.reduce(into: [:]) {
+            result,
+            pair in
+            guard pair.key != sender else {
+                return
             }
-            let epoch = membership.epochs.last
-            if let epoch {
-                return .credential(epoch.credential, epoch.epoch)
-            } else {
-                return .referenceId(membership.referenceId)
+            assert(result[pair.key] == nil)
+            switch pair.value {
+            case .invited(let dependencies):
+                result[pair.key] = .referenceId(pair.key)
+            case .claimed(let epochs):
+                let epoch = try epochs.last.tryUnwrap
+                result[pair.key] = .credential(
+                    epoch.credential,
+                    epoch.epoch
+                )
             }
         }
+    }
+
+    public func readyToWelcome(credential: Credential) throws {
+        try members[credential.referenceId].tryUnwrap
+            .readyToWelcome(credential: credential)
     }
 }
 
@@ -78,22 +90,16 @@ extension DiGroupState: Archivable {
 }
 
 extension DiGroupState {
-    public struct Membership {
-        let referenceId: DiMLS.ReferenceID
-        //can prune, but should never prune to empty as
-        //empty indicates invited
-        public private(set) var epochs: [Epoch]  //should be in increasing epoch order
+    public enum Membership {
+        //can be empty so that as an identity provider it allows me to add them,
+        //then lets me fill in the dependency
+        case invited([DiMLS.KeyedDependency])
+        case claimed([Epoch])
 
-        static func new(credential: Credential) -> Self {
-            .init(
-                referenceId: credential.referenceId,
-                epochs: []
-            )
-        }
-
-        init(referenceId: DiMLS.ReferenceID, epochs: [Epoch]) {
-            self.referenceId = referenceId
-            self.epochs = epochs
+        static func new(
+            dependency: DiMLS.KeyedDependency?
+        ) -> Self {
+            .invited([dependency].compactMap(\.self))
         }
 
         public struct Epoch: Archivable {
@@ -126,49 +132,43 @@ extension DiGroupState {
                 .init(epoch: epoch, credential: credential.encoded)
             }
         }
+
+        func readyToWelcome(credential: Credential) throws {
+            guard case .invited = self else {
+                throw DiMLSError.duplicateMember
+            }
+        }
     }
 }
 
 extension DiGroupState.Membership: Archivable {
-    public struct Archive: Codable, Sendable {
-        let referenceId: DiMLS.ReferenceID
-        let epochs: [Epoch.Archive]
-
-        public init(referenceId: DiMLS.ReferenceID, epochs: [Epoch.Archive]) {
-            self.referenceId = referenceId
-            self.epochs = epochs
-        }
-
-        public static func create(referenceId: DiMLS.ReferenceID) -> Self {
-            .init(referenceId: referenceId, epochs: [])
-        }
+    public enum Archive: Codable, Sendable {
+        case invited([DiMLS.KeyedDependency])
+        case claimed([Epoch.Archive])
 
         public static func create(
-            referenceId: DiMLS.ReferenceID,
             credential: Data,
             epoch: UInt64
         ) -> Self {
-            .init(
-                referenceId: referenceId,
-                epochs: [
-                    .init(
-                        epoch: epoch,
-                        credential: credential
-                    )
-                ]
-            )
+            .claimed([.init(epoch: epoch, credential: credential)])
         }
     }
 
     public init(archive: Archive) throws {
-        referenceId = archive.referenceId
-        epochs = try archive.epochs.map { try .init(archive: $0) }
+        switch archive {
+        case .claimed(let epochs):
+            self = .claimed(try epochs.map { try .init(archive: $0) })
+        case .invited(let dependencies):
+            self = .invited(dependencies)
+        }
     }
 
     var archive: Archive {
-        .init(
-            referenceId: referenceId,
-            epochs: epochs.map(\.archive)
-        )
+        switch self {
+        case .claimed(let epochs):
+            .claimed(epochs.map(\.archive))
+        case .invited(let dependencies):
+            .invited(dependencies)
+        }
     }
 }
