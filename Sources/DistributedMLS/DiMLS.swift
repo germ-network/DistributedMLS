@@ -35,11 +35,6 @@ public enum DiMLS {
         }
     }
 
-    public enum DecryptOutput {
-        case control  //todo: type out the control plane message
-        case application(plaintext: Data)
-    }
-
     public struct EncryptOutput: Sendable {
         //Implementation may choose to staple the commit and/or
         //encrypt headers

@@ -36,8 +36,12 @@ extension DiMLS {
         //(add + dependency), so we let the implementation modify the pending
         //state to pop off the actions it can make progress on
         func prepareCommit() throws -> DiMLS.CommitInput<Credential>
+        //different interface as it is initially handled by the init key
+        //corresponding to a keyPackage
         func received(welcome: WelcomeOutput) throws
-
+        //if we know we can process directly with the symmetric ratchet
+        func received(privateMessage: Data) throws -> AppPlaintext
+        func received(ciphertext: Data) throws -> DecryptOutput
         //        func stageNewLocalKeyMaterial() throws
     }
 }
