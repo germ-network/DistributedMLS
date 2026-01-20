@@ -10,21 +10,21 @@ import os
 extension DiMLS {
     public final class PendingState<C: DiMLSCredential> {
         var applicationRequestsNewKeyDistribution: Bool
-        public var pendingLocalOps: [DiMLS.ReferenceID: DiMLSOperations<C>]
+        public var pendingLocalOps: Set<DiMLSOperations<C>>
         //this includes incorporating PCS updates
         var pendingFollowOps: [DiMLS.ReferenceID: DiMLSOperations<C>]
 
         public static func create() -> Self {
             .init(
                 applicationRequestsNewKeyDistribution: false,
-                pendingLocalOps: [:],
+                pendingLocalOps: [],
                 pendingFollowOps: [:]
             )
         }
 
         init(
             applicationRequestsNewKeyDistribution: Bool,
-            pendingLocalOps: [DiMLS.ReferenceID: DiMLSOperations<C>],
+            pendingLocalOps: Set<DiMLSOperations<C>>,
             pendingFollowOps: [DiMLS.ReferenceID: DiMLSOperations<C>]
         ) {
             self.applicationRequestsNewKeyDistribution = applicationRequestsNewKeyDistribution
@@ -35,7 +35,7 @@ extension DiMLS {
         //MARK: Archive
         public struct Archive: Sendable, Codable {
             let applicationRequestsNewKeyDistribution: Bool
-            let pendingLocalOps: [DiMLS.ReferenceID: DiMLSOperations<C>.Archive]
+            let pendingLocalOps: [DiMLSOperations<C>.Archive]
             //this includes incorporating PCS updates
             let pendingFollowOps: [DiMLS.ReferenceID: DiMLSOperations<C>.Archive]
         }
@@ -43,8 +43,10 @@ extension DiMLS {
         public init(archive: Archive) throws {
             self.applicationRequestsNewKeyDistribution =
                 archive.applicationRequestsNewKeyDistribution
-            self.pendingLocalOps = try archive.pendingLocalOps
-                .mapValues { try .init(archive: $0) }
+            self.pendingLocalOps = try .init(
+                archive.pendingLocalOps.map {
+                    try .init(archive: $0)
+                })
             self.pendingFollowOps = try archive.pendingFollowOps
                 .mapValues { try .init(archive: $0) }
         }
@@ -53,7 +55,7 @@ extension DiMLS {
             get throws {
                 .init(
                     applicationRequestsNewKeyDistribution: applicationRequestsNewKeyDistribution,
-                    pendingLocalOps: try pendingLocalOps.mapValues { try $0.archive },
+                    pendingLocalOps: try pendingLocalOps.map { try $0.archive },
                     pendingFollowOps: try pendingFollowOps.mapValues { try $0.archive },
                 )
             }
@@ -65,13 +67,13 @@ extension DiMLS {
         }
 
         public func stageAdd(member: DiMLS.CredentialedKeyPackage<C>) throws {
-            //already staged conflicting op? we can just replace for now
-            if let pendingOp = pendingLocalOps[member.credential.referenceId] {
-                Logger(subsystem: "SenderGroupDiMLS", category: "validAdd")
-                    .notice("substituting a staged \(pendingOp.description)")
-            }
+            pendingLocalOps.insert(.add(member))
+        }
 
-            pendingLocalOps[member.credential.referenceId] = .add(member)
+        func committed(input: CommitInput<C>) {
+            for localOp in input.localOps {
+                pendingLocalOps.remove(localOp)
+            }
         }
     }
 }

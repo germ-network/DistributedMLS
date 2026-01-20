@@ -71,6 +71,14 @@ extension DiMLS {
             try members[member].tryUnwrap
                 .readyToWelcome(member: member)
         }
+
+        func welcomed(member: Membership.Epoch) throws {
+            let referenceId = member.credential.referenceId
+            guard case .invited = members[referenceId] else {
+                throw DiMLSError.disallowed
+            }
+            members[referenceId] = .claimed([member])
+        }
     }
 }
 
@@ -105,10 +113,10 @@ extension DiMLS.TotalGroup {
         }
 
         public struct Epoch: Archivable {
-            let epoch: UInt64
+            let epoch: DiMLS.EpochID
             public let credential: Credential
 
-            init(epoch: UInt64, credential: Credential) {
+            public init(epoch: DiMLS.EpochID, credential: Credential) {
                 self.epoch = epoch
                 self.credential = credential
             }
@@ -121,10 +129,10 @@ extension DiMLS.TotalGroup {
             }
 
             public struct Archive: Codable, Sendable {
-                let epoch: UInt64
+                let epoch: DiMLS.EpochID
                 let credential: Data
 
-                public init(epoch: UInt64, credential: Data) {
+                public init(epoch: DiMLS.EpochID, credential: Data) {
                     self.epoch = epoch
                     self.credential = credential
                 }

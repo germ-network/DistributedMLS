@@ -17,6 +17,7 @@ extension DiMLS {
         associatedtype Sender: SendChannel where Sender.Credential == Credential
 
         associatedtype WelcomeOutput: WelcomeOutputInterface
+        where WelcomeOutput.Credential == Credential
 
         //Archivable
         var archive: Archive { get throws }
@@ -38,7 +39,6 @@ extension DiMLS {
         func prepareCommit() throws -> DiMLS.CommitInput<Credential>
         //different interface as it is initially handled by the init key
         //corresponding to a keyPackage
-        func received(welcome: WelcomeOutput) throws -> AppPlaintext?
         //if we know we can process directly with the symmetric ratchet
         func received(privateMessage: Data) throws -> AppPlaintext
         func received(ciphertext: Data) throws -> DecryptOutput
@@ -156,7 +156,7 @@ extension DiMLS.DiGroup {
         plaintext: Data,
         authenticating: Data,
         staplingCommit: Bool
-    ) throws -> [(Credential, DiMLS.EncryptOutput)] {
+    ) throws -> [Credential: DiMLS.EncryptOutput] {
         let sender = try lazySender.readyChannel
 
         //commit if necessary
@@ -234,6 +234,7 @@ extension DiMLS.DiGroup {
             throw DiMLSError.duplicateMember
         }
         receivers[senderReferenceId] = try .create(welcome: welcome)
+        try totalGroup.welcomed(member: try welcome.membershipEpoch)
 
         guard let appMessage = welcome.appPrivateMessage else {
             return nil

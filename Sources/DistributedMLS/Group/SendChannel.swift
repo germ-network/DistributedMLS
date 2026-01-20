@@ -43,9 +43,7 @@ public protocol SendChannel {
     )
     //packaging the encrypted app message with metadata can all be done
     //in the send channel
-    func encrypt(plaintext: Data, authenticating: Data) throws -> [(
-        Credential, DiMLS.EncryptOutput
-    )]
+    func encrypt(plaintext: Data, authenticating: Data) throws -> [Credential: DiMLS.EncryptOutput]
 
 }
 
