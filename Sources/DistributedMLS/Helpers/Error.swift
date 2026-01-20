@@ -7,7 +7,7 @@
 
 import Foundation
 
-enum DiMLSError: Error {
+public enum DiMLSError: Error {
     case missingRemoteState
     case mismatchedGroupId
     case duplicateSendGroup
@@ -15,6 +15,7 @@ enum DiMLSError: Error {
     case disallowed
     case sendGroupNotReady
     case duplicateMember
+    case expecting(DiMLS.Dependency)
 }
 
 extension DiMLSError: LocalizedError {
@@ -26,7 +27,8 @@ extension DiMLSError: LocalizedError {
         case .notImplemented: "Not implemented"
         case .disallowed: "Disallowed"
         case .sendGroupNotReady: "Send group not ready"
-        case .duplicateMember: "Duplicate memeber"
+        case .duplicateMember: "Duplicate member"
+        case .expecting: "Missing dependency"
         }
     }
 }

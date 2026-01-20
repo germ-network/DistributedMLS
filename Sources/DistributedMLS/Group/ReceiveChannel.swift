@@ -8,5 +8,6 @@
 import Foundation
 
 public protocol ReceiveChannel {
-
+    associatedtype WelcomeOutput: WelcomeOutputInterface
+    static func create(welcome: WelcomeOutput) throws -> Self
 }

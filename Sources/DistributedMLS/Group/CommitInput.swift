@@ -5,33 +5,43 @@
 //  Created by Mark @ Germ on 1/11/26.
 //
 
+import Foundation
+
 extension DiMLS {
     public struct CommitInput<C: DiMLSCredential> {
-        public var proposals: Set<DiMLSOperations<C>>
+        public var localOps: Set<DiMLSOperations<C>>
+        public var followOps: Set<DiMLSOperations<C>>
 
-        //psk's
-        struct Dependency {
-            let pskSource: ReferenceID
-            let epoch: EpochID
-        }
-        var dependencies: [Dependency]
+        public var dependencies: [KeyedDependency]
 
         public var newSenderLeafNode: Bool
 
         public init() {
-            proposals = []
+            localOps = []
+            followOps = []
             dependencies = []
             newSenderLeafNode = false
         }
+    }
 
-        private init(
-            proposals: [DiMLSOperations<C>],
-            dependencies: [Dependency],
-            newSenderLeafNode: Bool
-        ) {
-            self.proposals = .init(proposals)
-            self.dependencies = dependencies
-            self.newSenderLeafNode = newSenderLeafNode
+    //psk's
+    public struct Dependency: Codable, Sendable, Hashable {
+        public let pskSource: ReferenceID
+        public let epoch: EpochID
+
+        public init(pskSource: ReferenceID, epoch: EpochID) {
+            self.pskSource = pskSource
+            self.epoch = epoch
+        }
+    }
+
+    public struct KeyedDependency: Codable, Sendable {
+        public let dependency: Dependency
+        public let keyData: Data
+
+        public init(dependency: Dependency, keyData: Data) {
+            self.dependency = dependency
+            self.keyData = keyData
         }
     }
 }

@@ -23,14 +23,31 @@ extension Optional {
     }
 }
 
+extension Array {
+    public var expectOne: Element {
+        get throws {
+            switch count {
+            case 0: throw ConvenienceError.emptyArray
+            case 1: try first.tryUnwrap
+            default: throw ConvenienceError.tooManyElements
+            }
+        }
+    }
+}
+
 enum ConvenienceError: Error {
     case missingOptional(String)
+    case emptyArray
+    case tooManyElements
 }
 
 extension ConvenienceError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .missingOptional(let type): "Expected to find an optional \(type), but didn't."
+        case .emptyArray: "Expected to find a value in an array, but the array was empty."
+        case .tooManyElements:
+            "Expected to find a single value in an array, but the array had multiple values."
         }
     }
 }

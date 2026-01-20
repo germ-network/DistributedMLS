@@ -13,7 +13,7 @@ extension DiMLS {
         associatedtype Credential: DiMLSCredential
 
         //State Types
-        associatedtype Receiver: ReceiveChannel
+        associatedtype Receiver: ReceiveChannel where Receiver.WelcomeOutput == WelcomeOutput
         associatedtype Sender: SendChannel where Sender.Credential == Credential
 
         associatedtype WelcomeOutput: WelcomeOutputInterface
@@ -24,7 +24,8 @@ extension DiMLS {
         //associated State
         //mutable object
 
-        var totalGroup: DiGroupState<Credential> { get }
+        nonisolated var diGroupId: Data { get }
+        var totalGroup: DiMLS.TotalGroup<Credential> { get }
         var receivers: [ReferenceID: Receiver] { get set }
         var pendingState: PendingState<Credential> { get }
         var lazySender: LazySendChannel<Sender> { get set }
@@ -35,41 +36,13 @@ extension DiMLS {
         //(add + dependency), so we let the implementation modify the pending
         //state to pop off the actions it can make progress on
         func prepareCommit() throws -> DiMLS.CommitInput<Credential>
+        //different interface as it is initially handled by the init key
+        //corresponding to a keyPackage
         func received(welcome: WelcomeOutput) throws
-
-        //Deprecate:
-        ///DiGgroup Operations
-        //        associatedtype RemoteState: RemoteStateInterface
-        //        var remoteStates: [ReferenceID: RemoteState] { get }
-
-        //Local mutations only have meaning when I broadcast them into the world
-        //        func stageAdd(member: DiMLS.CredentialedKeyPackage<Credential>) throws
-        //        func stageDelete(member: Credential) throws
-        //        //application should drive if new key material is needed
+        //if we know we can process directly with the symmetric ratchet
+        func received(privateMessage: Data) throws -> AppPlaintext
+        func received(ciphertext: Data) throws -> DecryptOutput
         //        func stageNewLocalKeyMaterial() throws
-
-        ///DiGroup 1:1 Control Plane
-        ///expect sender crendential implicit in assigned transport path
-        //        func receive(ciphertext: Data, from: Credential) throws -> DiMLS.DecryptOutput
-
-        //let the application get and resend unack'd commits
-        //TODO: attach metadata to the result like an epoch no
-        //        func inFlightFor(remote: Credential) throws -> [Data]
-
-        //Application messages
-        //this will commit any pending changes
-        //TODO: also report state changes
-        //for now, authenticated data is included in the output
-        //(because MLS does in the PrivateMessage format)
-        //returns private message and recipients
-        //        func encrypt(plaintext: Data, authenticating: Data) throws
-        //            -> DiMLS.PrivateMessage<Credential>
-        //        func stapledEncrypt(plaintext: Data) throws
-        //            -> DiMLS.PrivateMessage<Credential>
-
-        //process incoming, which may be an application message, commit
-        //or a welcome to another user's send group
-
     }
 }
 
@@ -91,8 +64,8 @@ extension DiMLS.DiGroup {
         credentialFetcher: @escaping CredentialKeyPackageFetcher,
         referenceIdFetcher: @escaping ReferenceIdKeyPackageFetcher
     ) throws -> Task<Void, Error> {
-        guard case .queued = lazySender else {
-            if case .creating(let task) = lazySender {
+        guard case .queued(let dependency) = lazySender else {
+            if case .creating(let task, _) = lazySender {
                 return task
             }
             throw DiMLSError.sendGroupNotReady
@@ -101,6 +74,10 @@ extension DiMLS.DiGroup {
             do {
                 let archive = try await createSendGroup(
                     myCredential: myCredential,
+                    members:
+                        totalGroup
+                        .membershipForCreating(sender: myCredential.referenceId),
+                    dependency: dependency,
                     credentialFetcher: credentialFetcher,
                     referenceIdFetcher: referenceIdFetcher
                 )
@@ -113,34 +90,35 @@ extension DiMLS.DiGroup {
                 lazySender = .ready(
                     try .init(
                         archive: archive,
+                        diGroupId: diGroupId,
                         identityProvider: identityProvider
                     )
                 )
             } catch {
                 print("error creating: \(error)")
-                lazySender = .queued
+                lazySender = .queued(dependency)
                 throw error
             }
         }
-        lazySender = .creating(task)
+        lazySender = .creating(task, dependency)
         return task
     }
 
     private func createSendGroup(
         myCredential: Credential,
+        members: [DiMLS.ReferenceID: DiMLS.Participant<Self.Credential>],
+        dependency: DiMLS.KeyedDependency?,
         credentialFetcher: CredentialKeyPackageFetcher,
         referenceIdFetcher: ReferenceIdKeyPackageFetcher
     ) async throws -> Sender.Archive {
-        if case .ready = lazySender {
-            throw DiMLSError.disallowed
-        }
+
         //capture a snapshot of what the group needs
         var remotes = [DiMLS.ReferenceID: SendChannelInputs<Credential>.Remote]()
 
-        for member
-            in totalGroup
+        let members =
+            try totalGroup
             .membershipForCreating(sender: myCredential.referenceId)
-        {
+        for member in members {
             switch member.value {
             case .credential(let credential, let epoch):
                 let keyPackage = try await credentialFetcher(credential)
@@ -162,14 +140,15 @@ extension DiMLS.DiGroup {
 
         return try Sender.create(
             input: .init(
-                diGroupID: totalGroup.diGroupId,
+                diGroupID: diGroupId,
                 myCredential: myCredential,
                 remotes: remotes
             ),
             identityProvider: Sender.identityProvider(
                 totalGroup: totalGroup,
                 sender: myCredential
-            )
+            ),
+            dependency: dependency
         )
     }
 
@@ -199,8 +178,6 @@ extension DiMLS.DiGroup {
         let input = try prepareCommit()
 
         return try commit(input: input, sender: sender)
-
-        throw DiMLSError.notImplemented
     }
 
     private func commit(
@@ -210,7 +187,7 @@ extension DiMLS.DiGroup {
         var newRemotes: [DiMLS.CredentialedKeyPackage<Credential>] = []
 
         //modify remotes and group
-        for action in input.proposals {
+        for action in input.localOps {
             switch action {
             case .add(let credentialKeyPackage):
                 newRemotes.append(credentialKeyPackage)
@@ -241,79 +218,24 @@ extension DiMLS.DiGroup {
             dependencies: [:]
         )
     }
-}
 
-//(Deprecate) full-featured compound api's
-extension DiMLS.DiGroup {
-    //    public func encryptWithCommits(
-    //        plaintext: Data,
-    //        authenticating: Data,
-    //        staplingCommit: Bool
-    //    ) throws -> [(Credential, DiMLS.EncryptOutput)] {
-    //        //use the ratchet tree
-    //        let privateMessage = try encrypt(
-    //            plaintext: plaintext,
-    //            authenticating: authenticating
-    //        )
-    //
-    //        return try privateMessage.addressees.map { credential in
-    //            guard let remoteState = remoteStates[credential.referenceId] else {
-    //                throw DiMLSError.missingRemoteState
-    //            }
-    //
-    //            return (
-    //                credential,
-    //                try remoteState.package(
-    //                    privateMessage: privateMessage.body,
-    //                    epoch: privateMessage.epoch,
-    //                    staplingCommit: staplingCommit
-    //                )
-    //            )
-    //        }
-    //    }
-
-    //    public func received(welcome: WelcomeOutput) throws {
-    //        guard welcome.diGroupId == totalGroup.diGroupId else {
-    //            throw DiMLSError.mismatchedGroupId
-    //        }
-    //
-    //        let senderReferenceId = try welcome.senderReferenceId
-    //
-    //        //is this a member of the group?
-    //        if totalGroup.members.contains(senderReferenceId) {
-    //            try expectedMember(welcome: welcome)
-    //        } else {
-    //            try newMember(welcome: welcome)
-    //        }
-    //
-    //        //is this a
-    //    }
-
-    private func newMember(welcome: WelcomeOutput) throws {
-        let senderReferenceId = try welcome.senderReferenceId
-        assert(!totalGroup.members.keys.contains(senderReferenceId))
-
-        guard totalGroup.canAdd(try welcome.senderReferenceId) == nil else {
-            throw DiMLSError.duplicateSendGroup
+    public func received(welcome: WelcomeOutput) throws {
+        guard welcome.diGroupId == diGroupId else {
+            throw DiMLSError.mismatchedGroupId
         }
-        throw DiMLSError.notImplemented
+
+        let senderReferenceId = try welcome.senderReferenceId
+
+        //is this a member of the group?
+        try totalGroup
+            .readyToWelcome(member: welcome.senderReferenceId)
+
+        guard receivers[senderReferenceId] == nil else {
+            throw DiMLSError.duplicateMember
+        }
+        receivers[senderReferenceId] = try .create(welcome: welcome)
     }
 
-    //    private func expectedMember(welcome: WelcomeOutput) throws {
-    //        let senderReferenceId = try welcome.senderReferenceId
-    //        assert(totalGroup.members.contains(senderReferenceId))
-    //
-    //        //where do I process this new welcome?
-    //        //do I already have a sendgroup for this sender?
-    //        if let remoteState = remoteStates[senderReferenceId] {
-    //            guard !remoteState.receivedWelcome else {
-    //                throw DiMLSError.duplicateSendGroup
-    //            }
-    //            //can setup the remoteSTate
-    //        } else {
-    //
-    //        }
-    //    }
 }
 
 //we have a generic (Credential) and a non-generic and could simplify them

@@ -17,16 +17,21 @@ public protocol SendChannel {
     associatedtype Welcome
 
     static func identityProvider(
-        totalGroup: DiGroupState<Credential>,
+        totalGroup: DiMLS.TotalGroup<Credential>,
         sender: Credential
     ) -> IdentityProvider
 
     static func create(
         input: SendChannelInputs<Credential>,
-        identityProvider: IdentityProvider
+        identityProvider: IdentityProvider,
+        dependency: DiMLS.KeyedDependency?
     ) throws -> Archive
 
-    init(archive: Archive, identityProvider: IdentityProvider) throws
+    init(
+        archive: Archive,
+        diGroupId: Data,
+        identityProvider: IdentityProvider
+    ) throws
 
     var archive: Archive { get throws }
 
@@ -75,21 +80,26 @@ public struct SendChannelInputs<Credential: DiMLSCredential> {
 
 public enum LazySendChannel<R: SendChannel> {
     case ready(R)
-    case queued
+    case queued(DiMLS.KeyedDependency?)
     //serves as a mutex on snapshot of Q state
-    case creating(Task<Void, Error>)
+    case creating(Task<Void, Error>, DiMLS.KeyedDependency?)
 
     public init(
         archive: Archive,
+        diGroupId: Data,
         identityProvider: R.IdentityProvider
     ) throws {
         switch archive {
         case .ready(let archive):
             self = .ready(
-                try .init(archive: archive, identityProvider: identityProvider)
+                try .init(
+                    archive: archive,
+                    diGroupId: diGroupId,
+                    identityProvider: identityProvider
+                )
             )
-        case .queued:
-            self = .queued
+        case .queued(let dependency):
+            self = .queued(dependency)
         }
     }
 
@@ -106,7 +116,7 @@ public enum LazySendChannel<R: SendChannel> {
 extension LazySendChannel {
     public enum Archive: Sendable, Codable {
         case ready(R.Archive)
-        case queued
+        case queued(DiMLS.KeyedDependency?)
     }
 
     public var archive: Archive {
@@ -114,10 +124,10 @@ extension LazySendChannel {
             switch self {
             case .ready(let r):
                 try .ready(r.archive)
-            case .queued:
-                try .queued
-            case .creating:
-                try .queued
+            case .queued(let dependency):
+                .queued(dependency)
+            case .creating(_, let dependency):
+                .queued(dependency)
             }
         }
     }
