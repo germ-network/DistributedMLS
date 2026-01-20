@@ -17,7 +17,7 @@ extension DiMLS {
 
     }
 
-    public struct AppPlaintext: Sendable {
+    public struct AppPlaintext: Sendable, Equatable {
         public let application: Data
         public let authenticating: Data
 
