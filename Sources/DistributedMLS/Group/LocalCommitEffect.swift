@@ -9,10 +9,10 @@ extension DiMLS {
     public struct EncryptResult<C: DiMLSCredential> {
         let privateMessage: PrivateMessage<C>
         //application messages always follow a commit. let the application
-        let commitEffect: CommitEffect<C>?
+        let commitEffect: LocalCommitEffect<C>?
     }
 
-    public struct CommitEffect<C: DiMLSCredential> {
+    public struct LocalCommitEffect<C: DiMLSCredential> {
         let didIntroduceNewPubKey: Bool
         let localOps: [DiMLSOperations<C>]
         //need to annotate the causal dependencies as well

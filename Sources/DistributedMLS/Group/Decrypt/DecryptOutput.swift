@@ -9,12 +9,23 @@ import Foundation
 
 extension DiMLS {
     public struct DecryptOutput: Sendable {
-        let appPlaintext: AppPlaintext
-        let controlMessage: ControlMessage?
+        public let appPlaintext: AppPlaintext
+        public let commitResult: CommitResult?
+
+        public init(
+            appPlaintext: AppPlaintext,
+            commitResult: CommitResult?
+        ) {
+            self.appPlaintext = appPlaintext
+            self.commitResult = commitResult
+        }
     }
 
-    public struct ControlMessage: Sendable {
+    public struct CommitResult: Sendable {
 
+        public init() {
+
+        }
     }
 
     public struct AppPlaintext: Sendable, Equatable {

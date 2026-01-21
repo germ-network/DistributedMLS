@@ -11,4 +11,5 @@ public protocol ReceiveChannel {
     associatedtype WelcomeOutput: WelcomeOutputInterface
     static func create(welcome: WelcomeOutput) throws -> Self
     func decrypt(messageData: Data) throws -> DiMLS.AppPlaintext
+    func received(ciphertext: Data) throws -> DistributedMLS.DiMLS.DecryptOutput?
 }

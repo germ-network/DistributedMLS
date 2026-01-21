@@ -13,11 +13,9 @@ extension DiMLS {
         associatedtype Credential: DiMLSCredential
 
         //State Types
-        associatedtype Receiver: ReceiveChannel where Receiver.WelcomeOutput == WelcomeOutput
+        associatedtype Receiver: ReceiveChannel
+        where Receiver.WelcomeOutput.Credential == Credential
         associatedtype Sender: SendChannel where Sender.Credential == Credential
-
-        associatedtype WelcomeOutput: WelcomeOutputInterface
-        where WelcomeOutput.Credential == Credential
 
         //Archivable
         var archive: Archive { get throws }
@@ -41,7 +39,10 @@ extension DiMLS {
         //corresponding to a keyPackage
         //if we know we can process directly with the symmetric ratchet
         func received(privateMessage: Data) throws -> AppPlaintext
-        func received(ciphertext: Data) throws -> DecryptOutput
+        func received(
+            ciphertext: Data,
+            senderHint: DiMLS.ReferenceID?
+        ) throws -> DecryptOutput
         //        func stageNewLocalKeyMaterial() throws
     }
 }
@@ -170,7 +171,7 @@ extension DiMLS.DiGroup {
 
     private func commitIfNecessary(
         sender: Sender
-    ) throws -> DiMLS.CommitEffect<Credential>? {
+    ) throws -> DiMLS.LocalCommitEffect<Credential>? {
         guard pendingState.commitNeeded else {
             return nil
         }
@@ -183,7 +184,7 @@ extension DiMLS.DiGroup {
     private func commit(
         input: DiMLS.CommitInput<Credential>,
         sender: Sender,
-    ) throws -> DiMLS.CommitEffect<Credential> {
+    ) throws -> DiMLS.LocalCommitEffect<Credential> {
         var newRemotes: [DiMLS.CredentialedKeyPackage<Credential>] = []
 
         //modify remotes and group
@@ -198,6 +199,7 @@ extension DiMLS.DiGroup {
 
         let sendChannel = try lazySender.readyChannel
 
+        //TODO: these are unused
         let (commitMessage, welcome) = try sendChannel.commit(input: input)
 
         if !newRemotes.isEmpty {
@@ -219,7 +221,7 @@ extension DiMLS.DiGroup {
         )
     }
 
-    public func received(welcome: WelcomeOutput) throws -> DiMLS.AppPlaintext? {
+    public func received(welcome: Receiver.WelcomeOutput) throws -> DiMLS.AppPlaintext? {
         guard welcome.diGroupId == diGroupId else {
             throw DiMLSError.mismatchedGroupId
         }

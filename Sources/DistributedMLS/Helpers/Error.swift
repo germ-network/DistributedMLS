@@ -15,6 +15,7 @@ public enum DiMLSError: Error {
     case disallowed
     case sendGroupNotReady
     case duplicateMember
+    case decryptFallthrough
     case expecting(DiMLS.Dependency)
 }
 
@@ -28,6 +29,7 @@ extension DiMLSError: LocalizedError {
         case .disallowed: "Disallowed"
         case .sendGroupNotReady: "Send group not ready"
         case .duplicateMember: "Duplicate member"
+        case .decryptFallthrough: "Decryption fallthrough"
         case .expecting: "Missing dependency"
         }
     }
