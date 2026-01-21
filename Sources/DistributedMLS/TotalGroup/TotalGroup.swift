@@ -60,7 +60,7 @@ extension DiMLS {
                 case .claimed(let epochs):
                     let epoch = try epochs.last.tryUnwrap
                     result[pair.key] = .credential(
-                        epoch.credential,
+                        epoch.senderCredential,
                         epoch.epoch
                     )
                 }
@@ -73,7 +73,7 @@ extension DiMLS {
         }
 
         func welcomed(member: Membership.Epoch) throws {
-            let referenceId = member.credential.referenceId
+            let referenceId = member.senderCredential.referenceId
             guard case .invited = members[referenceId] else {
                 throw DiMLSError.disallowed
             }
@@ -114,32 +114,60 @@ extension DiMLS.TotalGroup {
 
         public struct Epoch: Archivable {
             let epoch: DiMLS.EpochID
-            public let credential: Credential
+            public let senderCredential: Credential
 
-            public init(epoch: DiMLS.EpochID, credential: Credential) {
+            let newDependencies: [DiMLS.ReferenceID: DiMLS.EpochID]
+
+            //accumulate these and don't accept rollbacks
+            let baseDependencies: [DiMLS.ReferenceID: DiMLS.EpochID]
+
+            public init(
+                epoch: DiMLS.EpochID,
+                senderCredential: Credential,
+                newDependencies: [DiMLS.ReferenceID: DiMLS.EpochID],
+                baseDependencies: [DiMLS.ReferenceID: DiMLS.EpochID]
+            ) {
                 self.epoch = epoch
-                self.credential = credential
+                self.senderCredential = senderCredential
+                self.newDependencies = newDependencies
+                self.baseDependencies = baseDependencies
             }
 
             public init(archive: Archive) throws {
                 self.init(
                     epoch: archive.epoch,
-                    credential: try .init(encoded: archive.credential)
+                    senderCredential: try .init(encoded: archive.credential),
+                    newDependencies: archive.newDependencies,
+                    baseDependencies: archive.baseDependencies
                 )
             }
 
             public struct Archive: Codable, Sendable {
                 let epoch: DiMLS.EpochID
                 let credential: Data
+                let newDependencies: [DiMLS.ReferenceID: DiMLS.EpochID]
+                let baseDependencies: [DiMLS.ReferenceID: DiMLS.EpochID]
 
-                public init(epoch: DiMLS.EpochID, credential: Data) {
+                public init(
+                    epoch: DiMLS.EpochID,
+                    credential: Data,
+                    newDependencies: [DiMLS.ReferenceID: DiMLS.EpochID],
+                    baseDependencies: [DiMLS.ReferenceID: DiMLS.EpochID]
+                ) {
                     self.epoch = epoch
                     self.credential = credential
+                    self.newDependencies = newDependencies
+                    self.baseDependencies = baseDependencies
                 }
             }
 
             var archive: Archive {
-                .init(epoch: epoch, credential: credential.encoded)
+                .init(
+                    epoch: epoch,
+                    credential: senderCredential.encoded,
+                    newDependencies: newDependencies,
+                    baseDependencies: baseDependencies
+                )
             }
         }
 
@@ -160,7 +188,16 @@ extension DiMLS.TotalGroup.Membership: Archivable {
             credential: Data,
             epoch: UInt64
         ) -> Self {
-            .claimed([.init(epoch: epoch, credential: credential)])
+            .claimed(
+                [
+                    .init(
+                        epoch: epoch,
+                        credential: credential,
+                        newDependencies: [:],
+                        baseDependencies: [:]
+                    )
+                ]
+            )
         }
     }
 
