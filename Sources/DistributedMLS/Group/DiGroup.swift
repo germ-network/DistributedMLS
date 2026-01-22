@@ -39,10 +39,7 @@ extension DiMLS {
         //corresponding to a keyPackage
         //if we know we can process directly with the symmetric ratchet
         func received(privateMessage: Data) throws -> AppPlaintext
-        func received(
-            ciphertext: Data,
-            senderHint: DiMLS.ReferenceID?
-        ) throws -> DecryptOutput
+
         //        func stageNewLocalKeyMaterial() throws
     }
 }
@@ -201,6 +198,7 @@ extension DiMLS.DiGroup {
 
         //TODO: these are unused
         let (commitMessage, welcome) = try sendChannel.commit(input: input)
+        pendingState.committed(input: input)
 
         if !newRemotes.isEmpty {
 
@@ -244,6 +242,41 @@ extension DiMLS.DiGroup {
         return try receivers[senderReferenceId].tryUnwrap
             .decrypt(messageData: appMessage)
 
+    }
+
+    public func received(
+        ciphertext: Data,
+        //helpful to have a hint here or you have to cycle through each send group
+        //as we use 1:1 channels this can be imferred from the channel
+        senderHint: DiMLS.ReferenceID?
+    ) throws -> DiMLS.DecryptOutput<Credential> {
+        let matching: [Receiver] = try {
+            return if let senderHint {
+                [try receivers[senderHint].tryUnwrap]
+            } else {
+                .init(receivers.values)
+            }
+        }()
+
+        for receiver in matching {
+            if let result = try receiver.received(
+                ciphertext: ciphertext,
+                diGroupId: diGroupId
+            ) {
+                if let commitResult = result.commitResult {
+                    for added in commitResult.added {
+                        try totalGroup.invited(
+                            member: added.referenceId,
+                            keyedDependency: commitResult.keyedDependency
+                        )
+                    }
+                }
+
+                return result
+            }
+        }
+
+        throw DiMLSError.decryptFallthrough
     }
 }
 

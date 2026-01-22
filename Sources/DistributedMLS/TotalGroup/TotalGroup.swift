@@ -79,6 +79,20 @@ extension DiMLS {
             }
             members[referenceId] = .claimed([member])
         }
+
+        func invited(
+            member: ReferenceID,
+            keyedDependency: DiMLS.KeyedDependency
+        ) throws {
+            if let existing = members[member] {
+                guard case .invited(let array) = existing else {
+                    return
+                }
+                members[member] = .invited(array + [keyedDependency])
+            } else {
+                members[member] = .invited([keyedDependency])
+            }
+        }
     }
 }
 

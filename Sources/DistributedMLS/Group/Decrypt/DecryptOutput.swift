@@ -8,23 +8,25 @@
 import Foundation
 
 extension DiMLS {
-    public struct DecryptOutput: Sendable {
+    public struct DecryptOutput<C: DiMLSCredential>: Sendable {
         public let appPlaintext: AppPlaintext
-        public let commitResult: CommitResult?
+        public let commitResult: CommitResult<C>?
 
         public init(
             appPlaintext: AppPlaintext,
-            commitResult: CommitResult?
+            commitResult: CommitResult<C>?
         ) {
             self.appPlaintext = appPlaintext
             self.commitResult = commitResult
         }
     }
 
-    public struct CommitResult: Sendable {
-
-        public init() {
-
+    public struct CommitResult<C: DiMLSCredential>: Sendable {
+        let added: [C]
+        let keyedDependency: KeyedDependency
+        public init(added: [C], keyedDependency: KeyedDependency) {
+            self.added = added
+            self.keyedDependency = keyedDependency
         }
     }
 
