@@ -9,7 +9,7 @@ import Foundation
 
 //higher level abstraction for the Local /
 extension DiMLS {
-    public protocol DiGroup: Actor, Archivable {
+    public protocol DiGroup: AnyObject, Archivable {
         associatedtype Credential: DiMLSCredential
 
         //State Types
@@ -61,45 +61,39 @@ extension DiMLS.DiGroup {
         myCredential: Credential,
         credentialFetcher: @escaping CredentialKeyPackageFetcher,
         referenceIdFetcher: @escaping ReferenceIdKeyPackageFetcher
-    ) throws -> Task<Void, Error> {
+    ) async throws {
         guard case .queued(let dependency) = lazySender else {
-            if case .creating(let task, _) = lazySender {
-                return task
-            }
             throw DiMLSError.sendGroupNotReady
         }
-        let task = Task {
-            do {
-                let archive = try await createSendGroup(
-                    myCredential: myCredential,
-                    members:
-                        totalGroup
-                        .membershipForCreating(sender: myCredential.referenceId),
-                    dependency: dependency,
-                    credentialFetcher: credentialFetcher,
-                    referenceIdFetcher: referenceIdFetcher
-                )
+        lazySender = .creating(dependency)
+        do {
+            let archive = try await createSendGroup(
+                myCredential: myCredential,
+                members:
+                    totalGroup
+                    .membershipForCreating(sender: myCredential.referenceId),
+                dependency: dependency,
+                credentialFetcher: credentialFetcher,
+                referenceIdFetcher: referenceIdFetcher
+            )
 
-                let identityProvider = Sender.identityProvider(
-                    totalGroup: totalGroup,
-                    sender: myCredential
-                )
+            let identityProvider = Sender.identityProvider(
+                totalGroup: totalGroup,
+                sender: myCredential
+            )
 
-                lazySender = .ready(
-                    try .init(
-                        archive: archive,
-                        diGroupId: diGroupId,
-                        identityProvider: identityProvider
-                    )
+            lazySender = .ready(
+                try .init(
+                    archive: archive,
+                    diGroupId: diGroupId,
+                    identityProvider: identityProvider
                 )
-            } catch {
-                print("error creating: \(error)")
-                lazySender = .queued(dependency)
-                throw error
-            }
+            )
+        } catch {
+            print("error creating: \(error)")
+            lazySender = .queued(dependency)
+            throw error
         }
-        lazySender = .creating(task, dependency)
-        return task
     }
 
     private func createSendGroup(

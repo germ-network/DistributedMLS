@@ -8,7 +8,7 @@
 import Foundation
 
 extension DiMLS {
-    public protocol Client: Actor, Archivable {
+    public protocol Client: Archivable {
         associatedtype Credential: DiMLSCredential
         associatedtype Group: DiGroup
         where Group.Receiver.WelcomeOutput == WelcomeOutput, Group.Credential == Credential
