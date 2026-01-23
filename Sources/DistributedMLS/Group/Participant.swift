@@ -9,7 +9,7 @@ import Foundation
 
 //exists for clients to reason about which credential to point to
 extension DiMLS {
-    public enum Participant<Credential: DiMLSCredential> {
+    public enum Participant<Credential: DiMLSCredential>: Equatable {
         case credential(Credential, DiMLS.EpochID)
         case referenceId(DiMLS.ReferenceID)
     }

@@ -79,8 +79,15 @@ public struct SendChannelInputs<Credential: DiMLSCredential> {
 public enum LazySendChannel<R: SendChannel> {
     case ready(R)
     case queued(DiMLS.KeyedDependency?)
-    //serves as a mutex on snapshot of Q state
-    case creating(DiMLS.KeyedDependency?)
+
+    //we want to externalize the async fetching of keyPackages
+    //so we allow for the app to ask for a membership set, freezing it
+    //then come back async to init that version
+    //it is ok for us to miss some updates in the interim
+    case preparing(
+        DiMLS.KeyedDependency?,
+        members: [DiMLS.ReferenceID: DiMLS.Participant<R.Credential>]
+    )
 
     public init(
         archive: Archive,
@@ -124,7 +131,7 @@ extension LazySendChannel {
                 try .ready(r.archive)
             case .queued(let dependency):
                 .queued(dependency)
-            case .creating(let dependency):
+            case .preparing(let dependency, _):
                 .queued(dependency)
             }
         }

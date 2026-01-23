@@ -14,6 +14,8 @@ public enum DiMLSError: Error {
     case notImplemented
     case disallowed
     case sendGroupNotReady
+    case sendGroupCreated
+    case reentrantCreateCall
     case duplicateMember
     case decryptFallthrough
     case expecting(DiMLS.Dependency)
@@ -28,6 +30,8 @@ extension DiMLSError: LocalizedError {
         case .notImplemented: "Not implemented"
         case .disallowed: "Disallowed"
         case .sendGroupNotReady: "Send group not ready"
+        case .sendGroupCreated: "Send group already created"
+        case .reentrantCreateCall: "Reentrant create call"
         case .duplicateMember: "Duplicate member"
         case .decryptFallthrough: "Decryption fallthrough"
         case .expecting: "Missing dependency"
