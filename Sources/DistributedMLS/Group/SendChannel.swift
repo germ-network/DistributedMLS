@@ -45,6 +45,8 @@ public protocol SendChannel {
     //in the send channel
     func encrypt(plaintext: Data, authenticating: Data) throws -> [Credential: DiMLS.EncryptOutput]
 
+    var recipients: [Credential] { get throws }
+
 }
 
 public struct SendChannelInputs<Credential: DiMLSCredential> {
@@ -108,7 +110,7 @@ public enum LazySendChannel<R: SendChannel> {
         }
     }
 
-    var readyChannel: R {
+    public var readyChannel: R {
         get throws {
             guard case .ready(let r) = self else {
                 throw DiMLSError.sendGroupNotReady
