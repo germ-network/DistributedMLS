@@ -22,7 +22,7 @@ extension DiMLS {
     }
 
     public struct CommitResult<C: DiMLSCredential>: Sendable {
-        let added: [C]
+        public let added: [C]
         let keyedDependency: KeyedDependency
         public init(added: [C], keyedDependency: KeyedDependency) {
             self.added = added
@@ -33,10 +33,12 @@ extension DiMLS {
     public struct AppPlaintext: Sendable, Equatable {
         public let application: Data
         public let authenticating: Data
+        public let sender: Data
 
-        public init(application: Data, authenticating: Data) {
+        public init(application: Data, authenticating: Data, sender: Data) {
             self.application = application
             self.authenticating = authenticating
+            self.sender = sender
         }
     }
 }
