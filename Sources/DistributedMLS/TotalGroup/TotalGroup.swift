@@ -129,7 +129,11 @@ extension DiMLS.TotalGroup {
         public struct Epoch: Archivable {
             let epoch: DiMLS.EpochID
             public let senderCredential: Credential
+            public var recipients: [Recipient]
+            //can efface this when fully ack'd
+            var keyedDependency: DiMLS.KeyedDependency?
 
+            //acknowledge other groups
             let newDependencies: [DiMLS.ReferenceID: DiMLS.EpochID]
 
             //accumulate these and don't accept rollbacks
@@ -138,11 +142,15 @@ extension DiMLS.TotalGroup {
             public init(
                 epoch: DiMLS.EpochID,
                 senderCredential: Credential,
+                recipients: [Recipient],
+                keyedDependency: DiMLS.KeyedDependency?,
                 newDependencies: [DiMLS.ReferenceID: DiMLS.EpochID],
                 baseDependencies: [DiMLS.ReferenceID: DiMLS.EpochID]
             ) {
                 self.epoch = epoch
                 self.senderCredential = senderCredential
+                self.recipients = recipients
+                self.keyedDependency = keyedDependency
                 self.newDependencies = newDependencies
                 self.baseDependencies = baseDependencies
             }
@@ -151,6 +159,9 @@ extension DiMLS.TotalGroup {
                 self.init(
                     epoch: archive.epoch,
                     senderCredential: try .init(encoded: archive.credential),
+                    recipients: try archive.recipients
+                        .map { try .init(archive: $0) },
+                    keyedDependency: archive.keyedDependency,
                     newDependencies: archive.newDependencies,
                     baseDependencies: archive.baseDependencies
                 )
@@ -159,17 +170,23 @@ extension DiMLS.TotalGroup {
             public struct Archive: Codable, Sendable {
                 let epoch: DiMLS.EpochID
                 let credential: Data
+                let recipients: [Recipient.Archive]
+                let keyedDependency: DiMLS.KeyedDependency?
                 let newDependencies: [DiMLS.ReferenceID: DiMLS.EpochID]
                 let baseDependencies: [DiMLS.ReferenceID: DiMLS.EpochID]
 
                 public init(
                     epoch: DiMLS.EpochID,
                     credential: Data,
+                    recipients: [Recipient.Archive],
+                    keyedDependency: DiMLS.KeyedDependency?,
                     newDependencies: [DiMLS.ReferenceID: DiMLS.EpochID],
                     baseDependencies: [DiMLS.ReferenceID: DiMLS.EpochID]
                 ) {
                     self.epoch = epoch
                     self.credential = credential
+                    self.recipients = recipients
+                    self.keyedDependency = keyedDependency
                     self.newDependencies = newDependencies
                     self.baseDependencies = baseDependencies
                 }
@@ -179,6 +196,8 @@ extension DiMLS.TotalGroup {
                 .init(
                     epoch: epoch,
                     credential: senderCredential.encoded,
+                    recipients: recipients.map(\.archive),
+                    keyedDependency: keyedDependency,
                     newDependencies: newDependencies,
                     baseDependencies: baseDependencies
                 )
@@ -207,6 +226,8 @@ extension DiMLS.TotalGroup.Membership: Archivable {
                     .init(
                         epoch: epoch,
                         credential: credential,
+                        recipients: [],
+                        keyedDependency: nil,
                         newDependencies: [:],
                         baseDependencies: [:]
                     )
@@ -230,6 +251,34 @@ extension DiMLS.TotalGroup.Membership: Archivable {
             .claimed(epochs.map(\.archive))
         case .invited(let dependencies):
             .invited(dependencies)
+        }
+    }
+}
+
+extension DiMLS.TotalGroup.Membership.Epoch {
+    public struct Recipient: Archivable {
+        let credential: Credential
+        var acknowledged: Bool
+
+        public init(credential: Credential, acknowledged: Bool) {
+            self.credential = credential
+            self.acknowledged = acknowledged
+        }
+
+        public init(archive: Archive) throws {
+            self.init(
+                credential: try .init(encoded: archive.credential),
+                acknowledged: archive.acknowledged
+            )
+        }
+
+        public struct Archive: Codable, Sendable {
+            let credential: Data
+            let acknowledged: Bool
+        }
+
+        var archive: Archive {
+            .init(credential: credential.encoded, acknowledged: acknowledged)
         }
     }
 }

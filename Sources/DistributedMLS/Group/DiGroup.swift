@@ -231,7 +231,10 @@ extension DiMLS.DiGroup {
         )
     }
 
-    public func received(welcome: Receiver.WelcomeOutput) throws -> DiMLS.AppPlaintext? {
+    public func received(
+        welcome: Receiver.WelcomeOutput,
+        myCredential: Credential,
+    ) throws -> DiMLS.AppPlaintext? {
         guard welcome.diGroupId == diGroupId else {
             throw DiMLSError.mismatchedGroupId
         }
@@ -246,7 +249,9 @@ extension DiMLS.DiGroup {
             throw DiMLSError.duplicateMember
         }
         receivers[senderReferenceId] = try .create(welcome: welcome)
-        try totalGroup.welcomed(member: try welcome.membershipEpoch)
+        try totalGroup.welcomed(
+            member: try welcome.membershipEpoch(myCredential: myCredential)
+        )
 
         guard let appMessage = welcome.appPrivateMessage else {
             return nil

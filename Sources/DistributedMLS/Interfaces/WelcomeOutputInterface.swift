@@ -13,5 +13,6 @@ public protocol WelcomeOutputInterface: Sendable {
     var senderReferenceId: DiMLS.ReferenceID { get throws }
     var keyedDependency: DiMLS.KeyedDependency? { get }
     var appPrivateMessage: Data? { get }
-    var membershipEpoch: DiMLS.TotalGroup<Credential>.Membership.Epoch { get throws }
+    func membershipEpoch(myCredential: Credential) throws
+        -> DiMLS.TotalGroup<Credential>.Membership.Epoch
 }
