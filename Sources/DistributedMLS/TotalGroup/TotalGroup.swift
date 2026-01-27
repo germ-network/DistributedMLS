@@ -44,29 +44,6 @@ extension DiMLS {
         //        members.insert(member)
         //    }
 
-        func membershipForCreating(
-            sender: ReferenceID
-        ) throws -> [ReferenceID: Participant<Credential>] {
-            try members.reduce(into: [:]) {
-                result,
-                pair in
-                guard pair.key != sender else {
-                    return
-                }
-                assert(result[pair.key] == nil)
-                switch pair.value {
-                case .invited(let dependencies):
-                    result[pair.key] = .referenceId(pair.key)
-                case .claimed(let epochs):
-                    let epoch = try epochs.last.tryUnwrap
-                    result[pair.key] = .credential(
-                        epoch.senderCredential,
-                        epoch.epoch
-                    )
-                }
-            }
-        }
-
         public func readyToWelcome(member: ReferenceID) throws {
             try members[member].tryUnwrap
                 .readyToWelcome(member: member)
@@ -118,6 +95,7 @@ extension DiMLS.TotalGroup {
         //can be empty so that as an identity provider it allows me to add them,
         //then lets me fill in the dependency
         case invited([DiMLS.KeyedDependency])
+        case known  //I did not see the initial invite
         case claimed([Epoch])
 
         static func new(
@@ -215,25 +193,26 @@ extension DiMLS.TotalGroup {
 extension DiMLS.TotalGroup.Membership: Archivable {
     public enum Archive: Codable, Sendable {
         case invited([DiMLS.KeyedDependency])
+        case known
         case claimed([Epoch.Archive])
 
-        public static func create(
-            credential: Data,
-            epoch: UInt64
-        ) -> Self {
-            .claimed(
-                [
-                    .init(
-                        epoch: epoch,
-                        credential: credential,
-                        recipients: [],
-                        keyedDependency: nil,
-                        newDependencies: [:],
-                        baseDependencies: [:]
-                    )
-                ]
-            )
-        }
+        //        public static func create(
+        //            credential: Data,
+        //            epoch: UInt64
+        //        ) -> Self {
+        //            .claimed(
+        //                [
+        //                    .init(
+        //                        epoch: epoch,
+        //                        credential: credential,
+        //                        recipients: [],
+        //                        keyedDependency: nil,
+        //                        newDependencies: [:],
+        //                        baseDependencies: [:]
+        //                    )
+        //                ]
+        //            )
+        //        }
     }
 
     public init(archive: Archive) throws {
@@ -242,6 +221,8 @@ extension DiMLS.TotalGroup.Membership: Archivable {
             self = .claimed(try epochs.map { try .init(archive: $0) })
         case .invited(let dependencies):
             self = .invited(dependencies)
+        case .known:
+            self = .known
         }
     }
 
@@ -251,6 +232,8 @@ extension DiMLS.TotalGroup.Membership: Archivable {
             .claimed(epochs.map(\.archive))
         case .invited(let dependencies):
             .invited(dependencies)
+        case .known:
+            .known
         }
     }
 }
@@ -275,6 +258,11 @@ extension DiMLS.TotalGroup.Membership.Epoch {
         public struct Archive: Codable, Sendable {
             let credential: Data
             let acknowledged: Bool
+
+            public init(credential: Data, acknowledged: Bool) {
+                self.credential = credential
+                self.acknowledged = acknowledged
+            }
         }
 
         var archive: Archive {
