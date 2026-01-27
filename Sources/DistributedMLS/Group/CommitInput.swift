@@ -10,7 +10,7 @@ import Foundation
 extension DiMLS {
     public struct CommitInput<C: DiMLSCredential> {
         public var localOps: Set<DiMLSOperations<C>>
-        public var followOps: Set<DiMLSOperations<C>>
+        public var followOps: [PendingState<C>.FollowOp]
 
         public var dependencies: [KeyedDependency]
 
@@ -42,6 +42,25 @@ extension DiMLS {
         public init(dependency: Dependency, keyData: Data) {
             self.dependency = dependency
             self.keyData = keyData
+        }
+    }
+}
+
+extension DiMLS {
+    //lookup table that we pass from total group to a client to process
+    public typealias AvailableDependendencies = [ReferenceID: [EpochID: KeyedDependency]]
+}
+extension DiMLS.TotalGroup {
+    public var keyedDependencies: DiMLS.AvailableDependendencies {
+        members.compactMapValues {
+            guard case .claimed(let epochs) = $0 else {
+                return nil
+            }
+            return epochs.reduce(into: [:]) { result, epoch in
+                if let keyedDependency = epoch.keyedDependency {
+                    result[epoch.epoch] = keyedDependency
+                }
+            }
         }
     }
 }

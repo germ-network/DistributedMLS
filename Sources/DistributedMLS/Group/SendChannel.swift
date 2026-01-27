@@ -24,7 +24,7 @@ public protocol SendChannel {
     static func create(
         input: SendChannelInputs<Credential>,
         identityProvider: IdentityProvider,
-        dependency: DiMLS.KeyedDependency?
+        dependencies: [DiMLS.KeyedDependency]
     ) throws -> Archive
 
     init(
@@ -53,6 +53,7 @@ public struct SendChannelInputs<Credential: DiMLSCredential> {
     public let diGroupID: Data
     public let myCredential: Credential
     public let remotes: [DiMLS.ReferenceID: Remote]
+    public let dependencies: [DiMLS.KeyedDependency]
 
     public struct Remote {
         public let keyPackage: DiMLS.CredentialedKeyPackage<Credential>

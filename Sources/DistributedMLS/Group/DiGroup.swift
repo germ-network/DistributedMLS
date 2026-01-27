@@ -128,6 +128,7 @@ extension DiMLS.DiGroup {
 
         //capture a snapshot of what the group needs
         var remotes = [DiMLS.ReferenceID: SendChannelInputs<Credential>.Remote]()
+        var dependencies = [dependency].compactMap(\.self)
 
         let members =
             try totalGroup
@@ -148,18 +149,47 @@ extension DiMLS.DiGroup {
             }
         }
 
+        //queue up any pending adds as well
+        let adds = try pendingState.accumulateAdds()
+        if let adds {
+            for localOp in adds.localOps {
+                if case .add(let member) = localOp {
+                    remotes[member.credential.referenceId] = .init(
+                        keyPackage: member,
+                        theirEpoch: nil
+                    )
+                }
+            }
+
+            for followOp in adds.followOps {
+                if case .add(let member) = followOp.operation {
+                    remotes[member.credential.referenceId] = .init(
+                        keyPackage: member,
+                        theirEpoch: nil
+                    )
+                    if let dependecy = followOp.dependency {
+                        dependencies.append(dependecy)
+                    }
+
+                }
+            }
+            pendingState.committed(input: adds)
+        }
+
         return try Sender.create(
             input: .init(
                 diGroupID: diGroupId,
                 myCredential: myCredential,
-                remotes: remotes
+                remotes: remotes,
+                dependencies: dependencies
             ),
             identityProvider: Sender.identityProvider(
                 totalGroup: totalGroup,
                 sender: myCredential
             ),
-            dependency: dependency
+            dependencies: dependencies
         )
+
     }
 
     public func encryptWithCommits(
