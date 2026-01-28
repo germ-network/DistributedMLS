@@ -8,10 +8,10 @@
 import Foundation
 
 extension DiMLS {
-    public protocol Client: Actor, Archivable {
+    public protocol Client: Archivable {
         associatedtype Credential: DiMLSCredential
         associatedtype Group: DiGroup
-        where Group.WelcomeOutput == WelcomeOutput, Group.Credential == Credential
+        where Group.Receiver.WelcomeOutput == WelcomeOutput, Group.Credential == Credential
         associatedtype WelcomeOutput: WelcomeOutputInterface
 
         static func create(credential: Credential) throws -> Self

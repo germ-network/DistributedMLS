@@ -9,14 +9,13 @@ import Foundation
 
 //higher level abstraction for the Local /
 extension DiMLS {
-    public protocol DiGroup: Actor, Archivable {
+    public protocol DiGroup: AnyObject, Archivable {
         associatedtype Credential: DiMLSCredential
 
         //State Types
-        associatedtype Receiver: ReceiveChannel where Receiver.WelcomeOutput == WelcomeOutput
+        associatedtype Receiver: ReceiveChannel
+        where Receiver.WelcomeOutput.Credential == Credential
         associatedtype Sender: SendChannel where Sender.Credential == Credential
-
-        associatedtype WelcomeOutput: WelcomeOutputInterface
 
         //Archivable
         var archive: Archive { get throws }
@@ -25,6 +24,7 @@ extension DiMLS {
         //mutable object
 
         nonisolated var diGroupId: Data { get }
+        nonisolated var myReferenceId: Data { get }
         var totalGroup: DiMLS.TotalGroup<Credential> { get }
         var receivers: [ReferenceID: Receiver] { get set }
         var pendingState: PendingState<Credential> { get }
@@ -36,12 +36,7 @@ extension DiMLS {
         //(add + dependency), so we let the implementation modify the pending
         //state to pop off the actions it can make progress on
         func prepareCommit() throws -> DiMLS.CommitInput<Credential>
-        //different interface as it is initially handled by the init key
-        //corresponding to a keyPackage
-        func received(welcome: WelcomeOutput) throws
-        //if we know we can process directly with the symmetric ratchet
-        func received(privateMessage: Data) throws -> AppPlaintext
-        func received(ciphertext: Data) throws -> DecryptOutput
+
         //        func stageNewLocalKeyMaterial() throws
     }
 }
@@ -59,96 +54,125 @@ extension DiMLS.DiGroup {
         return true
     }
 
-    public func setupChannel(
-        myCredential: Credential,
-        credentialFetcher: @escaping CredentialKeyPackageFetcher,
-        referenceIdFetcher: @escaping ReferenceIdKeyPackageFetcher
-    ) throws -> Task<Void, Error> {
-        guard case .queued(let dependency) = lazySender else {
-            if case .creating(let task, _) = lazySender {
-                return task
+    public func prepareSendChannelSetup()
+        throws -> SendChannelInputs<Credential>.Snapshot
+    {
+        switch lazySender {
+        //can call this repeatedly to get a newer membership list
+        case .ready:
+            throw DiMLSError.sendGroupCreated
+        default:
+            break
+        }
+
+        //can't construct group de novo by unioning when joining,
+        //need to consult the existing groups
+        //to find the widest one to references
+        let referenceEpoch = try chooseReceiver()
+        let referenceSender = referenceEpoch.senderCredential
+
+        var remotes = [DiMLS.ReferenceID: SendChannelInputs<Credential>.Remote.Snapshot]()
+        remotes[referenceSender.referenceId] =
+            .joined(
+                epoch: referenceEpoch.epoch,
+                credential: referenceSender
+            )
+        for recipient in referenceEpoch.recipients {
+            guard recipient.credential.referenceId != myReferenceId else {
+                continue
             }
+
+            switch totalGroup.members[recipient.credential.referenceId] {
+            case .claimed(let epochs):
+                let epoch = try epochs.last.tryUnwrap
+                remotes[recipient.credential.referenceId] =
+                    .joined(
+                        epoch: epoch.epoch,
+                        credential: epoch.senderCredential
+                    )
+            case .invited:
+                remotes[recipient.credential.referenceId] =
+                    .invited
+            case .known:
+                remotes[recipient.credential.referenceId] =
+                    .known(recipient.credential)
+            case .none:
+                throw DiMLSError.disallowed
+            }
+        }
+
+        let snapshot = SendChannelInputs<Credential>.Snapshot(
+            diGroupID: diGroupId,
+            remotes: remotes,
+            dependency: try referenceEpoch.keyedDependency.tryUnwrap
+        )
+        lazySender = .preparing(snapshot)
+        return snapshot
+    }
+
+    private func chooseReceiver() throws -> DiMLS.TotalGroup<Self.Credential>.Membership.Epoch {
+        var choice: DiMLS.TotalGroup<Self.Credential>.Membership.Epoch? = nil
+        for (id, receiver) in totalGroup.members {
+            guard id != myReferenceId else {
+                continue
+            }
+            guard case .claimed(let epochs) = receiver else {
+                continue
+            }
+            let epoch = try epochs.last.tryUnwrap
+            if let _choice = choice {
+                if _choice.recipients.count < epoch.recipients.count {
+                    choice = epoch
+                    //TODO, if set equality, compare individual epochs
+                }
+            } else {
+                choice = epoch
+            }
+        }
+        return try choice.tryUnwrap
+    }
+
+    public func setupChannel(input: SendChannelInputs<Credential>) throws {
+        guard case .preparing(let stagedInput) = lazySender else {
             throw DiMLSError.sendGroupNotReady
         }
-        let task = Task {
-            do {
-                let archive = try await createSendGroup(
-                    myCredential: myCredential,
-                    members:
-                        totalGroup
-                        .membershipForCreating(sender: myCredential.referenceId),
-                    dependency: dependency,
-                    credentialFetcher: credentialFetcher,
-                    referenceIdFetcher: referenceIdFetcher
-                )
-
-                let identityProvider = Sender.identityProvider(
-                    totalGroup: totalGroup,
-                    sender: myCredential
-                )
-
-                lazySender = .ready(
-                    try .init(
-                        archive: archive,
-                        diGroupId: diGroupId,
-                        identityProvider: identityProvider
-                    )
-                )
-            } catch {
-                print("error creating: \(error)")
-                lazySender = .queued(dependency)
-                throw error
-            }
+        guard input.snapshotId == stagedInput.id else {
+            throw DiMLSError.reentrantCreateCall
         }
-        lazySender = .creating(task, dependency)
-        return task
+
+        do {
+            let (archive, epoch) = try createSendGroup(input: input)
+            try totalGroup.welcomed(member: epoch)
+
+            let identityProvider = Sender.identityProvider(
+                totalGroup: totalGroup,
+                sender: input.myCredential
+            )
+
+            lazySender = .ready(
+                try .init(
+                    archive: archive,
+                    diGroupId: diGroupId,
+                    identityProvider: identityProvider
+                )
+            )
+        } catch {
+            print("error creating: \(error)")
+            lazySender = .queued
+            throw error
+        }
     }
 
     private func createSendGroup(
-        myCredential: Credential,
-        members: [DiMLS.ReferenceID: DiMLS.Participant<Self.Credential>],
-        dependency: DiMLS.KeyedDependency?,
-        credentialFetcher: CredentialKeyPackageFetcher,
-        referenceIdFetcher: ReferenceIdKeyPackageFetcher
-    ) async throws -> Sender.Archive {
-
-        //capture a snapshot of what the group needs
-        var remotes = [DiMLS.ReferenceID: SendChannelInputs<Credential>.Remote]()
-
-        let members =
-            try totalGroup
-            .membershipForCreating(sender: myCredential.referenceId)
-        for member in members {
-            switch member.value {
-            case .credential(let credential, let epoch):
-                let keyPackage = try await credentialFetcher(credential)
-
-                remotes[member.key] = .init(
-                    keyPackage: .init(
-                        credential: credential,
-                        keyPackage: keyPackage
-                    ),
-                    theirEpoch: epoch
-                )
-            case .referenceId(let referenceId):
-                remotes[member.key] = .init(
-                    keyPackage: try await referenceIdFetcher(referenceId),
-                    theirEpoch: nil
-                )
-            }
-        }
-
+        input: SendChannelInputs<Credential>
+    ) throws -> (Sender.Archive, DiMLS.TotalGroup<Credential>.Membership.Epoch) {
         return try Sender.create(
-            input: .init(
-                diGroupID: diGroupId,
-                myCredential: myCredential,
-                remotes: remotes
-            ),
+            input: input,
             identityProvider: Sender.identityProvider(
                 totalGroup: totalGroup,
-                sender: myCredential
+                sender: input.myCredential
             ),
-            dependency: dependency
+            dependency: input.dependency
         )
     }
 
@@ -156,7 +180,7 @@ extension DiMLS.DiGroup {
         plaintext: Data,
         authenticating: Data,
         staplingCommit: Bool
-    ) throws -> [(Credential, DiMLS.EncryptOutput)] {
+    ) throws -> [Credential: DiMLS.EncryptOutput] {
         let sender = try lazySender.readyChannel
 
         //commit if necessary
@@ -170,7 +194,7 @@ extension DiMLS.DiGroup {
 
     private func commitIfNecessary(
         sender: Sender
-    ) throws -> DiMLS.CommitEffect<Credential>? {
+    ) throws -> DiMLS.LocalCommitEffect<Credential>? {
         guard pendingState.commitNeeded else {
             return nil
         }
@@ -183,7 +207,7 @@ extension DiMLS.DiGroup {
     private func commit(
         input: DiMLS.CommitInput<Credential>,
         sender: Sender,
-    ) throws -> DiMLS.CommitEffect<Credential> {
+    ) throws -> DiMLS.LocalCommitEffect<Credential> {
         var newRemotes: [DiMLS.CredentialedKeyPackage<Credential>] = []
 
         //modify remotes and group
@@ -198,10 +222,11 @@ extension DiMLS.DiGroup {
 
         let sendChannel = try lazySender.readyChannel
 
-        let (commitMessage, welcome) = try sendChannel.commit(input: input)
+        //TODO: these are unused
+        let (commitMessage, welcome, historyEpoch) = try sendChannel.commit(input: input)
+        pendingState.committed(input: input)
 
         if !newRemotes.isEmpty {
-
             for newRemote in newRemotes {
                 let referenceId = newRemote.credential.referenceId
 
@@ -211,6 +236,11 @@ extension DiMLS.DiGroup {
             }
         }
 
+        try totalGroup.committed(
+            referenceId: myReferenceId,
+            epoch: historyEpoch
+        )
+
         return .init(
             didIntroduceNewPubKey: input.newSenderLeafNode,
             localOps: [],
@@ -219,7 +249,10 @@ extension DiMLS.DiGroup {
         )
     }
 
-    public func received(welcome: WelcomeOutput) throws {
+    public func received(
+        welcome: Receiver.WelcomeOutput,
+        myCredential: Credential,
+    ) throws -> DiMLS.AppPlaintext? {
         guard welcome.diGroupId == diGroupId else {
             throw DiMLSError.mismatchedGroupId
         }
@@ -234,8 +267,59 @@ extension DiMLS.DiGroup {
             throw DiMLSError.duplicateMember
         }
         receivers[senderReferenceId] = try .create(welcome: welcome)
+        try totalGroup.welcomed(
+            member: try welcome.membershipEpoch(myCredential: myCredential)
+        )
+
+        guard let appMessage = welcome.appPrivateMessage else {
+            return nil
+        }
+        return try receivers[senderReferenceId].tryUnwrap
+            .decrypt(messageData: appMessage)
+
     }
 
+    public func received(privateMessage: Data, sender: DiMLS.ReferenceID) throws
+        -> DiMLS.AppPlaintext
+    {
+        try receivers[sender].tryUnwrap
+            .decrypt(messageData: privateMessage)
+    }
+
+    public func received(
+        ciphertext: Data,
+        //helpful to have a hint here or you have to cycle through each send group
+        //as we use 1:1 channels this can be imferred from the channel
+        senderHint: DiMLS.ReferenceID?
+    ) throws -> DiMLS.DecryptOutput<Credential> {
+        let matching: [Receiver] = try {
+            return if let senderHint {
+                [try receivers[senderHint].tryUnwrap]
+            } else {
+                .init(receivers.values)
+            }
+        }()
+
+        for receiver in matching {
+            if let result = try receiver.received(
+                ciphertext: ciphertext,
+                diGroupId: diGroupId
+            ) {
+                if let commitResult = result.commitResult {
+                    for added in commitResult.added {
+                        try totalGroup.invited(
+                            member: added.referenceId,
+                            keyedDependency: commitResult.keyedDependency
+                        )
+                    }
+                }
+
+                return result
+            }
+        }
+
+        throw DiMLSError.decryptFallthrough
+    }
 }
 
 //we have a generic (Credential) and a non-generic and could simplify them

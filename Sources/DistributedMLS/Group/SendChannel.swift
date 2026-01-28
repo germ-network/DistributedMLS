@@ -25,7 +25,7 @@ public protocol SendChannel {
         input: SendChannelInputs<Credential>,
         identityProvider: IdentityProvider,
         dependency: DiMLS.KeyedDependency?
-    ) throws -> Archive
+    ) throws -> (Archive, DiMLS.TotalGroup<Credential>.Membership.Epoch)
 
     init(
         archive: Archive,
@@ -39,20 +39,39 @@ public protocol SendChannel {
 
     func commit(input: DiMLS.CommitInput<Credential>) throws -> (
         commitMessage: Commit,
-        welcomes: [Welcome]
+        welcomes: [Welcome],
+        historyEpoch: DiMLS.TotalGroup<Credential>.Membership.Epoch
     )
     //packaging the encrypted app message with metadata can all be done
     //in the send channel
-    func encrypt(plaintext: Data, authenticating: Data) throws -> [(
-        Credential, DiMLS.EncryptOutput
-    )]
+    func encrypt(plaintext: Data, authenticating: Data) throws -> [Credential: DiMLS.EncryptOutput]
 
+    var recipients: [Credential] { get throws }
+
+    func exportDependencyKey(diGroupContext: Data) throws -> Data
 }
 
 public struct SendChannelInputs<Credential: DiMLSCredential> {
+    public let snapshotId: UUID
     public let diGroupID: Data
     public let myCredential: Credential
     public let remotes: [DiMLS.ReferenceID: Remote]
+    //for now, can only refer to a single group when distributing welcomes
+    public let dependency: DiMLS.KeyedDependency?
+
+    public init(
+        snapshotId: UUID,
+        diGroupID: Data,
+        myCredential: Credential,
+        remotes: [DiMLS.ReferenceID: Remote],
+        dependency: DiMLS.KeyedDependency?
+    ) {
+        self.snapshotId = snapshotId
+        self.diGroupID = diGroupID
+        self.myCredential = myCredential
+        self.remotes = remotes
+        self.dependency = dependency
+    }
 
     public struct Remote {
         public let keyPackage: DiMLS.CredentialedKeyPackage<Credential>
@@ -66,6 +85,30 @@ public struct SendChannelInputs<Credential: DiMLSCredential> {
             self.keyPackage = keyPackage
             self.theirEpoch = theirEpoch
         }
+
+        public enum Snapshot {
+            case invited
+            case known(Credential)
+            case joined(epoch: UInt64, credential: Credential)
+
+            public var epoch: UInt64? {
+                switch self {
+                case .invited, .known:
+                    nil
+                case .joined(let epoch):
+                    epoch.epoch
+                }
+            }
+        }
+    }
+
+    //get keypackages for these remotes and give me back a SendChannelInputs when done
+    public struct Snapshot {
+        public let id = UUID()
+        public let diGroupID: Data
+        public let remotes: [DiMLS.ReferenceID: Remote.Snapshot]
+        //for now, can only refer to a single group when distributing welcomes
+        public let dependency: DiMLS.KeyedDependency?
     }
 
     public var correspondingRecipientEpoch: [DiMLS.ReferenceID: UInt64] {
@@ -80,9 +123,13 @@ public struct SendChannelInputs<Credential: DiMLSCredential> {
 
 public enum LazySendChannel<R: SendChannel> {
     case ready(R)
-    case queued(DiMLS.KeyedDependency?)
-    //serves as a mutex on snapshot of Q state
-    case creating(Task<Void, Error>, DiMLS.KeyedDependency?)
+    case queued
+
+    //we want to externalize the async fetching of keyPackages
+    //so we allow for the app to ask for a membership set, freezing it
+    //then come back async to init that version
+    //it is ok for us to miss some updates in the interim
+    case preparing(SendChannelInputs<R.Credential>.Snapshot)
 
     public init(
         archive: Archive,
@@ -98,12 +145,12 @@ public enum LazySendChannel<R: SendChannel> {
                     identityProvider: identityProvider
                 )
             )
-        case .queued(let dependency):
-            self = .queued(dependency)
+        case .queued:
+            self = .queued
         }
     }
 
-    var readyChannel: R {
+    public var readyChannel: R {
         get throws {
             guard case .ready(let r) = self else {
                 throw DiMLSError.sendGroupNotReady
@@ -116,7 +163,7 @@ public enum LazySendChannel<R: SendChannel> {
 extension LazySendChannel {
     public enum Archive: Sendable, Codable {
         case ready(R.Archive)
-        case queued(DiMLS.KeyedDependency?)
+        case queued
     }
 
     public var archive: Archive {
@@ -124,10 +171,8 @@ extension LazySendChannel {
             switch self {
             case .ready(let r):
                 try .ready(r.archive)
-            case .queued(let dependency):
-                .queued(dependency)
-            case .creating(_, let dependency):
-                .queued(dependency)
+            case .queued, .preparing:
+                .queued
             }
         }
     }
