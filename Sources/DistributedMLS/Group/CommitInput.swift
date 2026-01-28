@@ -46,21 +46,21 @@ extension DiMLS {
     }
 }
 
-extension DiMLS {
-    //lookup table that we pass from total group to a client to process
-    public typealias AvailableDependendencies = [ReferenceID: [EpochID: KeyedDependency]]
-}
-extension DiMLS.TotalGroup {
-    public var keyedDependencies: DiMLS.AvailableDependendencies {
-        members.compactMapValues {
-            guard case .claimed(let epochs) = $0 else {
-                return nil
-            }
-            return epochs.reduce(into: [:]) { result, epoch in
-                if let keyedDependency = epoch.keyedDependency {
-                    result[epoch.epoch] = keyedDependency
-                }
-            }
-        }
-    }
-}
+//extension DiMLS {
+//    //lookup table that we pass from total group to a client to process
+//    public typealias AvailableDependendencies = [ReferenceID: [EpochID: KeyedDependency]]
+//}
+//extension DiMLS.TotalGroup {
+//    public var keyedDependencies: DiMLS.AvailableDependendencies {
+//        members.compactMapValues {
+//            guard case .claimed(let epochs) = $0 else {
+//                return nil
+//            }
+//            return epochs.reduce(into: [:]) { result, epoch in
+//                if let keyedDependency = epoch.keyedDependency {
+//                    result[epoch.epoch] = keyedDependency
+//                }
+//            }
+//        }
+//    }
+//}

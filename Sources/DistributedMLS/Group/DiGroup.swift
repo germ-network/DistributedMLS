@@ -36,10 +36,6 @@ extension DiMLS {
         //(add + dependency), so we let the implementation modify the pending
         //state to pop off the actions it can make progress on
         func prepareCommit() throws -> DiMLS.CommitInput<Credential>
-        //different interface as it is initially handled by the init key
-        //corresponding to a keyPackage
-        //if we know we can process directly with the symmetric ratchet
-        func received(privateMessage: Data) throws -> AppPlaintext
 
         //        func stageNewLocalKeyMaterial() throws
     }
@@ -145,7 +141,8 @@ extension DiMLS.DiGroup {
         }
 
         do {
-            let archive = try createSendGroup(input: input)
+            let (archive, epoch) = try createSendGroup(input: input)
+            try totalGroup.welcomed(member: epoch)
 
             let identityProvider = Sender.identityProvider(
                 totalGroup: totalGroup,
@@ -166,7 +163,9 @@ extension DiMLS.DiGroup {
         }
     }
 
-    private func createSendGroup(input: SendChannelInputs<Credential>) throws -> Sender.Archive {
+    private func createSendGroup(
+        input: SendChannelInputs<Credential>
+    ) throws -> (Sender.Archive, DiMLS.TotalGroup<Credential>.Membership.Epoch) {
         return try Sender.create(
             input: input,
             identityProvider: Sender.identityProvider(
@@ -175,7 +174,6 @@ extension DiMLS.DiGroup {
             ),
             dependency: input.dependency
         )
-
     }
 
     public func encryptWithCommits(
@@ -225,11 +223,10 @@ extension DiMLS.DiGroup {
         let sendChannel = try lazySender.readyChannel
 
         //TODO: these are unused
-        let (commitMessage, welcome) = try sendChannel.commit(input: input)
+        let (commitMessage, welcome, historyEpoch) = try sendChannel.commit(input: input)
         pendingState.committed(input: input)
 
         if !newRemotes.isEmpty {
-
             for newRemote in newRemotes {
                 let referenceId = newRemote.credential.referenceId
 
@@ -238,6 +235,11 @@ extension DiMLS.DiGroup {
                 }
             }
         }
+
+        try totalGroup.committed(
+            referenceId: myReferenceId,
+            epoch: historyEpoch
+        )
 
         return .init(
             didIntroduceNewPubKey: input.newSenderLeafNode,
@@ -275,6 +277,13 @@ extension DiMLS.DiGroup {
         return try receivers[senderReferenceId].tryUnwrap
             .decrypt(messageData: appMessage)
 
+    }
+
+    public func received(privateMessage: Data, sender: DiMLS.ReferenceID) throws
+        -> DiMLS.AppPlaintext
+    {
+        try receivers[sender].tryUnwrap
+            .decrypt(messageData: privateMessage)
     }
 
     public func received(

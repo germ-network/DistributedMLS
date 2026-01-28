@@ -25,7 +25,7 @@ public protocol SendChannel {
         input: SendChannelInputs<Credential>,
         identityProvider: IdentityProvider,
         dependency: DiMLS.KeyedDependency?
-    ) throws -> Archive
+    ) throws -> (Archive, DiMLS.TotalGroup<Credential>.Membership.Epoch)
 
     init(
         archive: Archive,
@@ -39,7 +39,8 @@ public protocol SendChannel {
 
     func commit(input: DiMLS.CommitInput<Credential>) throws -> (
         commitMessage: Commit,
-        welcomes: [Welcome]
+        welcomes: [Welcome],
+        historyEpoch: DiMLS.TotalGroup<Credential>.Membership.Epoch
     )
     //packaging the encrypted app message with metadata can all be done
     //in the send channel
@@ -47,6 +48,7 @@ public protocol SendChannel {
 
     var recipients: [Credential] { get throws }
 
+    func exportDependencyKey(diGroupContext: Data) throws -> Data
 }
 
 public struct SendChannelInputs<Credential: DiMLSCredential> {

@@ -37,13 +37,6 @@ extension DiMLS {
             members[member.referenceId] = .new(dependency: nil)
         }
 
-        //    public func added(member: DiMLS.ReferenceID) throws {
-        //        guard canAdd(member) else {
-        //            throw DiMLSError.disallowed
-        //        }
-        //        members.insert(member)
-        //    }
-
         public func readyToWelcome(member: ReferenceID) throws {
             try members[member].tryUnwrap
                 .readyToWelcome(member: member)
@@ -54,7 +47,9 @@ extension DiMLS {
             guard case .invited = members[referenceId] else {
                 throw DiMLSError.disallowed
             }
-            members[referenceId] = .claimed([member])
+
+            let existing = try members[referenceId].tryUnwrap
+            members[referenceId] = try existing.welcomed(epoch: member)
         }
 
         func invited(
@@ -69,6 +64,14 @@ extension DiMLS {
             } else {
                 members[member] = .invited([keyedDependency])
             }
+        }
+
+        func committed(
+            referenceId: DiMLS.ReferenceID,
+            epoch: Membership.Epoch
+        ) throws {
+            let existing = try members[referenceId].tryUnwrap
+            members[referenceId] = try existing.committed(epoch: epoch)
         }
     }
 }
@@ -187,6 +190,46 @@ extension DiMLS.TotalGroup {
                 throw DiMLSError.duplicateMember
             }
         }
+
+        func welcomed(epoch: Epoch) throws -> Membership {
+            switch self {
+            case .known, .invited:
+                break
+            case .claimed(let array):
+                throw DiMLSError.disallowed
+            }
+
+            return .claimed([epoch])
+
+        }
+
+        func committed(epoch: Epoch) throws -> Membership {
+            guard case .claimed(let epochs) = self else {
+                throw DiMLSError.disallowed
+            }
+            let newest = try epochs.last.tryUnwrap
+            assert(newest.epoch + 1 == epoch.epoch)
+
+            var newBase = newest.baseDependencies
+            for (key, value) in epoch.newDependencies {
+                if let existing = newBase[key] {
+                    assert(value > existing)
+                    newBase[key] = value
+                }
+            }
+
+            let newEpoch = Epoch(
+                epoch: epoch.epoch,
+                senderCredential: epoch.senderCredential,
+                recipients: epoch.recipients,
+                keyedDependency: epoch.keyedDependency,
+                newDependencies: epoch.newDependencies,
+                baseDependencies: epoch.baseDependencies
+            )
+
+            return .claimed(epochs + [epoch])
+
+        }
     }
 }
 
@@ -195,24 +238,6 @@ extension DiMLS.TotalGroup.Membership: Archivable {
         case invited([DiMLS.KeyedDependency])
         case known
         case claimed([Epoch.Archive])
-
-        //        public static func create(
-        //            credential: Data,
-        //            epoch: UInt64
-        //        ) -> Self {
-        //            .claimed(
-        //                [
-        //                    .init(
-        //                        epoch: epoch,
-        //                        credential: credential,
-        //                        recipients: [],
-        //                        keyedDependency: nil,
-        //                        newDependencies: [:],
-        //                        baseDependencies: [:]
-        //                    )
-        //                ]
-        //            )
-        //        }
     }
 
     public init(archive: Archive) throws {
@@ -267,6 +292,20 @@ extension DiMLS.TotalGroup.Membership.Epoch {
 
         var archive: Archive {
             .init(credential: credential.encoded, acknowledged: acknowledged)
+        }
+    }
+}
+
+extension DiMLS.TotalGroup {
+    public var knownDependencies: [DiMLS.KeyedDependency] {
+        members.values.reduce(into: []) { result, member in
+            switch member {
+            case .invited(let dependencies):
+                result += dependencies
+            case .known: break
+            case .claimed(let epochs):
+                result += epochs.compactMap(\.keyedDependency)
+            }
         }
     }
 }
