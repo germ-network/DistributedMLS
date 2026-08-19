@@ -18,6 +18,18 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  lint:
+    name: swift-format lint
+    runs-on: macOS-15-arm64
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: swift-actions/setup-swift@v2
+        with:
+          swift-version: "6.2"
+      - name: swift-format lint
+        run: swift format lint --recursive --configuration .swift-format --strict Sources Tests
+
   test:
     name: Test MacOS
     runs-on: macOS-15-arm64
